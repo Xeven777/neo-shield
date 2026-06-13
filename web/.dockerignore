@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+coverage
+drizzle
+README.md
+AGENTS.md
+CLAUDE.md

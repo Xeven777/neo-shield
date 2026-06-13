@@ -1,0 +1,1 @@
+ALTER TABLE "finding" ADD COLUMN "missed_scan_count" integer DEFAULT 0 NOT NULL;
