@@ -1,7 +1,13 @@
 import { ClockCounterClockwiseIcon } from "@phosphor-icons/react/dist/ssr"
 
 import { Badge } from "@/components/ui/badge"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 
 export function ComingSoon({
   title,

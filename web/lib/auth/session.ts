@@ -60,14 +60,12 @@ const loadActiveWorkspace = async (
 
 export const getActiveWorkspace = cache(loadActiveWorkspace)
 
-export const requireWorkspace = cache(
-  async (): Promise<WorkspaceContext> => {
-    const session = await requireSession()
-    const active = await getActiveWorkspace(session.user.id)
-    if (!active) redirect("/onboarding")
-    return { session, ...active }
-  }
-)
+export const requireWorkspace = cache(async (): Promise<WorkspaceContext> => {
+  const session = await requireSession()
+  const active = await getActiveWorkspace(session.user.id)
+  if (!active) redirect("/onboarding")
+  return { session, ...active }
+})
 
 const MANAGE_ROLES: WorkspaceRole[] = ["owner", "admin"]
 

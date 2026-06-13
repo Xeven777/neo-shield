@@ -183,6 +183,57 @@ export const asset = table(
   ]
 )
 
+/**
+ * Endpoint inventory for an `endpoint` asset. Wazuh is the only provider in
+ * Phase 2, but `provider` is kept explicit so a second agent source can be
+ * added without a new table.
+ */
+export type EndpointAgentStatus =
+  | "active"
+  | "disconnected"
+  | "pending"
+  | "never_connected"
+  | "unknown"
+
+export const endpointAgent = table(
+  "endpoint_agent",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    assetId: uuid()
+      .notNull()
+      .references(() => asset.id, { onDelete: "cascade" }),
+    provider: text().notNull().default("wazuh"),
+    /** Agent id inside the provider (Wazuh agent id, e.g. "001"). */
+    externalId: text().notNull(),
+    name: text().notNull(),
+    ipAddress: text(),
+    osName: text(),
+    osVersion: text(),
+    osPlatform: text(),
+    architecture: text(),
+    agentVersion: text(),
+    status: text().$type<EndpointAgentStatus>().notNull().default("unknown"),
+    lastSeenAt: timestamp({ withTimezone: true }),
+    config: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (t) => [
+    unique("endpoint_agent_asset_id_provider_external_id_key").on(
+      t.assetId,
+      t.provider,
+      t.externalId
+    ),
+    index("endpoint_agent_workspace_id_idx").on(t.workspaceId),
+    index("endpoint_agent_provider_external_id_idx").on(
+      t.provider,
+      t.externalId
+    ),
+  ]
+)
+
 export const integrationProvider = pgEnum("integration_provider", [
   "github",
   "wazuh",
@@ -209,7 +260,11 @@ export const integration = table(
     displayName: text().notNull(),
     status: integrationStatus().notNull().default("pending"),
     metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    /** High-water mark for incremental pulls (Wazuh alert timestamp). */
+    syncCursor: timestamp({ withTimezone: true }),
     lastSyncedAt: timestamp({ withTimezone: true }),
+    /** Safe, already-redacted error summary from the worker. */
+    lastError: text(),
     ...timestamps,
   },
   (t) => [index("integration_workspace_id_idx").on(t.workspaceId)]
@@ -406,6 +461,77 @@ export const scanRun = table(
 )
 
 /* -------------------------------------------------------------------------- */
+/* Network discovery inventory                                                */
+/* -------------------------------------------------------------------------- */
+
+export type NetworkObservationStatus = "active" | "missing"
+
+export const networkHost = table(
+  "network_host",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    assetId: uuid()
+      .notNull()
+      .references(() => asset.id, { onDelete: "cascade" }),
+    address: text().notNull(),
+    hostname: text(),
+    macAddress: text(),
+    vendor: text(),
+    status: text().$type<NetworkObservationStatus>().notNull().default("active"),
+    firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastScanRunId: uuid().references(() => scanRun.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("network_host_asset_id_address_key").on(t.assetId, t.address),
+    index("network_host_workspace_id_idx").on(t.workspaceId),
+    index("network_host_asset_id_status_idx").on(t.assetId, t.status),
+  ]
+)
+
+export const networkService = table(
+  "network_service",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    hostId: uuid()
+      .notNull()
+      .references(() => networkHost.id, { onDelete: "cascade" }),
+    assetId: uuid()
+      .notNull()
+      .references(() => asset.id, { onDelete: "cascade" }),
+    port: integer().notNull(),
+    protocol: text().notNull().default("tcp"),
+    serviceName: text(),
+    product: text(),
+    version: text(),
+    extraInfo: text(),
+    cpe: text(),
+    status: text().$type<NetworkObservationStatus>().notNull().default("active"),
+    firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastScanRunId: uuid().references(() => scanRun.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("network_service_host_id_port_protocol_key").on(
+      t.hostId,
+      t.port,
+      t.protocol
+    ),
+    index("network_service_asset_id_idx").on(t.assetId),
+    index("network_service_status_idx").on(t.status),
+  ]
+)
+
+/* -------------------------------------------------------------------------- */
 /* Findings                                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -516,8 +642,62 @@ export const findingStatusEvent = table(
     note: text(),
     createdAt: timestamps.createdAt,
   },
+  (t) => [index("finding_status_event_finding_id_idx").on(t.findingId)]
+)
+
+/* -------------------------------------------------------------------------- */
+/* Security events (endpoint telemetry, not every alert is a finding)         */
+/* -------------------------------------------------------------------------- */
+
+export const securityEvent = table(
+  "security_event",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: uuid()
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    assetId: uuid()
+      .notNull()
+      .references(() => asset.id, { onDelete: "cascade" }),
+    findingId: uuid().references(() => finding.id, { onDelete: "set null" }),
+    source: findingSource().notNull(),
+    sourceTool: text().notNull(),
+    /** Provider document id (Wazuh alert id); dedupes repeated polls. */
+    externalId: text().notNull(),
+    eventTime: timestamp({ withTimezone: true }).notNull(),
+    ruleId: text(),
+    ruleLevel: integer(),
+    severity: findingSeverity().notNull(),
+    category: text().notNull(),
+    title: text().notNull(),
+    description: text().notNull(),
+    agentId: text(),
+    agentName: text(),
+    sourceIp: text(),
+    evidence: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamps.createdAt,
+  },
   (t) => [
-    index("finding_status_event_finding_id_idx").on(t.findingId),
+    unique("security_event_workspace_id_source_tool_external_id_key").on(
+      t.workspaceId,
+      t.sourceTool,
+      t.externalId
+    ),
+    index("security_event_workspace_id_event_time_idx").on(
+      t.workspaceId,
+      t.eventTime
+    ),
+    index("security_event_asset_id_event_time_idx").on(
+      t.assetId,
+      t.eventTime
+    ),
+    index("security_event_workspace_id_severity_idx").on(
+      t.workspaceId,
+      t.severity
+    ),
   ]
 )
 
@@ -556,3 +736,8 @@ export type ScanRun = typeof scanRun.$inferSelect
 export type ScanJobStatus = (typeof scanJobStatus.enumValues)[number]
 export type GithubRepository = typeof githubRepository.$inferSelect
 export type GithubInstallation = typeof githubInstallation.$inferSelect
+export type EndpointAgent = typeof endpointAgent.$inferSelect
+export type Integration = typeof integration.$inferSelect
+export type NetworkHost = typeof networkHost.$inferSelect
+export type NetworkService = typeof networkService.$inferSelect
+export type SecurityEvent = typeof securityEvent.$inferSelect

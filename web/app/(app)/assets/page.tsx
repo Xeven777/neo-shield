@@ -29,12 +29,27 @@ export default async function AssetsPage() {
   const { workspace } = await requireWorkspace()
   const rows = await listWorkspaceAssets(workspace.id)
 
+  const counts = rows.reduce<Record<string, number>>((totals, row) => {
+    totals[row.asset.type] = (totals[row.asset.type] ?? 0) + 1
+    return totals
+  }, {})
+
   return (
     <>
       <PageHeader
         title="Assets"
         description="Every asset belongs to a project and keeps its own scan state. Assets are never deleted with their history."
       />
+
+      {rows.length > 0 ? (
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {Object.entries(counts).map(([type, value]) => (
+            <Badge key={type} variant="outline" className="font-mono text-[10px]">
+              {value} {titleCase(type)}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
 
       {rows.length === 0 ? (
         <Empty className="border border-border bg-card/40">
@@ -44,8 +59,8 @@ export default async function AssetsPage() {
             </EmptyMedia>
             <EmptyTitle>No assets connected</EmptyTitle>
             <EmptyDescription>
-              Phase 1 adds GitHub repositories and domains. Phase 2 adds Wazuh
-              endpoints and authorized network ranges.
+              Attach a GitHub repository or add a domain in Integrations. Wazuh
+              endpoints and authorized network ranges are available now.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -65,7 +80,12 @@ export default async function AssetsPage() {
               {rows.map(({ asset, projectName, projectId }) => (
                 <TableRow key={asset.id}>
                   <TableCell>
-                    <p className="font-medium">{asset.displayName}</p>
+                    <Link
+                      href={`/assets/${asset.id}`}
+                      className="font-medium underline-offset-4 hover:underline"
+                    >
+                      {asset.displayName}
+                    </Link>
                     <p className="max-w-72 truncate font-mono text-xs text-muted-foreground">
                       {asset.identifier}
                     </p>

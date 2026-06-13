@@ -1,7 +1,10 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import type { Metadata } from "next"
-import { CheckCircleIcon, ShieldCheckIcon } from "@phosphor-icons/react/dist/ssr"
+import {
+  CheckCircleIcon,
+  ShieldCheckIcon,
+} from "@phosphor-icons/react/dist/ssr"
 
 import { SignInForm } from "@/components/sign-in/sign-in-form"
 import { getSession } from "@/lib/auth/session"
@@ -71,7 +74,7 @@ export default async function SignInPage() {
         />
         <div
           aria-hidden
-          className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:56px_56px] opacity-30"
+          className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-size-[56px_56px] opacity-30"
         />
         <div className="relative flex h-full flex-col justify-center px-14">
           <p className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase">
@@ -83,7 +86,10 @@ export default async function SignInPage() {
           </h2>
           <ul className="mt-8 space-y-3">
             {guarantees.map((item) => (
-              <li key={item} className="flex max-w-md items-start gap-3 text-sm text-muted-foreground">
+              <li
+                key={item}
+                className="flex max-w-md items-start gap-3 text-sm text-muted-foreground"
+              >
                 <CheckCircleIcon
                   weight="fill"
                   className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"

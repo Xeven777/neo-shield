@@ -125,7 +125,9 @@ export async function updateProjectAction(
   return { status: "success", message: "Project updated." }
 }
 
-export async function deleteProjectAction(projectId: string): Promise<FormState> {
+export async function deleteProjectAction(
+  projectId: string
+): Promise<FormState> {
   const { session, workspace, role } = await requireWorkspace()
 
   try {

@@ -31,7 +31,11 @@ export async function POST(request: Request) {
   })
 
   if (!worker) {
-    return jsonError(401, "invalid_token", "Worker token is invalid or revoked.")
+    return jsonError(
+      401,
+      "invalid_token",
+      "Worker token is invalid or revoked."
+    )
   }
 
   return json({

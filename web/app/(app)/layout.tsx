@@ -1,4 +1,8 @@
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { NavUser } from "@/components/nav-user"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -17,7 +21,9 @@ export default async function AppLayout({
 }) {
   const { session, workspace, role } = await requireWorkspace()
   const workers = await listWorkers(workspace.id)
-  const onlineWorkers = workers.filter((worker) => isWorkerOnline(worker)).length
+  const onlineWorkers = workers.filter((worker) =>
+    isWorkerOnline(worker)
+  ).length
 
   return (
     <SidebarProvider>
@@ -25,14 +31,18 @@ export default async function AppLayout({
         workspaceName={workspace.name}
         workspaceSlug={workspace.slug}
         onlineWorkers={onlineWorkers}
-        totalWorkers={workers.filter((worker) => worker.status === "active").length}
+        totalWorkers={
+          workers.filter((worker) => worker.status === "active").length
+        }
       />
       <SidebarInset>
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur-sm">
           <SidebarTrigger />
           <Separator orientation="vertical" className="mr-1 h-4" />
           <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium">{workspace.name}</span>
+            <span className="truncate text-sm font-medium">
+              {workspace.name}
+            </span>
             <Badge variant="outline" className="font-mono text-[10px]">
               {role}
             </Badge>

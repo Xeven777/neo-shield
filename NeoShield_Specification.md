@@ -4,7 +4,7 @@
 >
 > **Architecture decisions:** Next.js is the web application and owns authentication. Python is a separate backend/worker service for scanning and security integrations. They are separate applications and may live in separate Git repositories; this is **not a monorepo**. Both can run as separate containers in one Docker Compose deployment on one cloud VM. PostgreSQL is managed by Neon; do not run a local PostgreSQL container. Drizzle owns the application schema/migrations. Python accesses the same Neon database using a Python PostgreSQL client, without a second migration system.
 >
-> **Instruction to the coding agent:** Treat this document as the source of truth. Inspect the existing repositories before changing anything. Do not silently replace the agreed architecture. Implement one phase at a time and report decisions before making large structural changes.
+> **Instruction to the coding agent:** Treat this document as the source of truth. Inspect the existing repositories before changing anything. Do not silently replace the agreed architecture. Implement one phase at a time and report decisions before making large structural changes. ALSO PLS ASK BEFORE MAKING ANY MAJOR DECISION OR DOING SOMETHING EXPENSIVE
 
 ---
 
@@ -314,7 +314,7 @@ Add AWS after Phase 3. Use Boto3 from the Python service.
 - **Containers:** Separate Docker images/containers for Next.js and Python. A single Docker Compose deployment can run both on one cloud VM. They can also be deployed independently later.
 - **Database:** One managed Neon PostgreSQL database shared by the two services. Do not run a local PostgreSQL container or introduce a second database for the initial version.
 - **ORM/schema ownership:** Drizzle ORM in the Next.js codebase owns schema definitions and migrations, including Better Auth tables. Python uses `psycopg` or SQLAlchemy Core for database access. Python must not introduce Alembic or another migration owner.
-- **Package managers:** `pnpm` for the Next.js app; `uv` for Python dependency and environment management. Do not use npm unless a specific deployment tool requires it.
+- **Package managers:** `bun` for the Next.js app; `uv` for Python dependency and environment management. Do not use npm unless a specific deployment tool requires it.
 - **Job queue:** PostgreSQL-backed job table using row locking/leases. No Redis/Kafka initially.
 
 ### 5.2 Deployment topology
@@ -350,7 +350,7 @@ The same two images may later be deployed to separate services or hosts. Both co
 ### 5.3 Next.js web application
 
 - Next.js App Router, TypeScript, Tailwind CSS and shadcn/ui.
-- `pnpm` for package management; commit the lockfile and pin the package manager version.
+- `bun` for package management; commit the lockfile and pin the package manager version.
 - Better Auth for email OTP, email magic link and Google sign-in.
 - Drizzle ORM and Drizzle Kit for typed database access and migrations.
 - Route Handlers for CRUD, auth integration, scan-job creation, worker/job APIs and result ingestion.
@@ -506,7 +506,7 @@ The TypeScript contract is the canonical documented API/data contract. Python sh
 | Web app | Next.js Docker image | Same cloud VM via Docker Compose initially |
 | Python API/worker | FastAPI + worker Docker image | Same cloud VM via Docker Compose initially |
 | Database | Neon PostgreSQL Free | Managed external database; no local DB container |
-| Package manager | pnpm | Web codebase |
+| Package manager | bun | Web codebase |
 | Python environment | uv | Python codebase |
 | Endpoint monitoring | Wazuh | Lab/local Docker environment or a suitably sized host |
 | Scanning tools | Gitleaks, OSV-Scanner, Trivy, Nmap | Python container/host with required binaries |
@@ -534,7 +534,7 @@ The order is intentional: **Phase 3 is the intelligence layer; Phase 4 is AWS.**
 ### Phase 0 — Repository audit and foundation
 - Inspect the existing web and Python repositories, package managers, conventions, auth, database, UI components and deployment setup.
 - Confirm that the codebases remain separate; do not create a monorepo or combine dependency management.
-- Set up Next.js with pnpm and Python with uv if not already present.
+- Set up Next.js with bun and Python with uv if not already present.
 - Configure Neon connection for development; do not add local PostgreSQL.
 - Add Drizzle schema/migrations and Better Auth integration.
 - Implement email OTP, magic link and Google sign-in (email delivery and OAuth credentials documented as required environment variables).
@@ -635,7 +635,7 @@ The order is intentional: **Phase 3 is the intelligence layer; Phase 4 is AWS.**
 1. **Do not implement all phases in one pass.** Start with Phase 0, then complete one phase at a time.
 2. Before coding, inspect both codebases and report what can be reused. Do not assume a blank project.
 3. Keep web and Python as separate applications/repositories. Do not convert them into a monorepo.
-4. Use pnpm for the Next.js codebase and uv for Python. Commit their lockfiles.
+4. Use bun for the Next.js codebase and uv for Python. Commit their lockfiles.
 5. Better Auth is the only user authentication/session system. Python uses a separate scoped worker/service credential.
 6. Drizzle is the only schema/migration authority. Python must not introduce a competing migration system.
 7. Neon is the only application database initially. Do not add local PostgreSQL to Docker Compose.
@@ -670,7 +670,6 @@ neoshield-web/                       # Independent Git repository
 ├── public/
 ├── Dockerfile
 ├── package.json
-├── pnpm-lock.yaml
 └── .env.example
 
 neoshield-python/                    # Independent Git repository

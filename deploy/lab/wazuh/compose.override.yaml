@@ -1,0 +1,24 @@
+# Localhost-only overrides for the official wazuh-docker single-node stack.
+#
+# Apply with:
+#   docker compose -f docker-compose.yml -f compose.override.yaml up -d
+#
+# `!override` replaces the published port list instead of appending to it, so
+# no Wazuh management, indexer, enrollment or dashboard port is bound to a
+# public interface. Do not remove the 127.0.0.1 prefix.
+
+services:
+  wazuh.manager:
+    ports: !override
+      - "127.0.0.1:1514:1514"
+      - "127.0.0.1:1515:1515"
+      - "127.0.0.1:514:514/udp"
+      - "127.0.0.1:55000:55000"
+
+  wazuh.indexer:
+    ports: !override
+      - "127.0.0.1:9200:9200"
+
+  wazuh.dashboard:
+    ports: !override
+      - "127.0.0.1:443:5601"

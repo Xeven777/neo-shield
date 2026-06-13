@@ -21,7 +21,9 @@ export function ThemeToggle() {
             variant="ghost"
             size="icon-sm"
             aria-label="Toggle theme"
-            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            onClick={() =>
+              setTheme(resolvedTheme === "dark" ? "light" : "dark")
+            }
           />
         }
       >

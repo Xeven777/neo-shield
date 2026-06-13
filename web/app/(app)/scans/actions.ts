@@ -3,14 +3,14 @@
 import { revalidatePath } from "next/cache"
 
 import { AuthorizationError, requireWorkspace } from "@/lib/auth/session"
-import { queueRepositoryScan, ScanRequestError } from "@/lib/services/scans"
+import { queueAssetScan, ScanRequestError } from "@/lib/services/scans"
 import type { FormState } from "@/lib/forms"
 
 export async function queueScanAction(assetId: string): Promise<FormState> {
   const { session, workspace, role } = await requireWorkspace()
 
   try {
-    const result = await queueRepositoryScan({
+    const result = await queueAssetScan({
       workspaceId: workspace.id,
       assetId,
       actorUserId: session.user.id,
@@ -24,7 +24,7 @@ export async function queueScanAction(assetId: string): Promise<FormState> {
     return {
       status: "success",
       message: result.reused
-        ? "A scan is already queued for this repository."
+        ? "A scan is already queued for this asset."
         : "Scan queued. A worker will claim it shortly.",
     }
   } catch (error) {

@@ -8,12 +8,12 @@ import { magicLink } from "better-auth/plugins/magic-link"
 
 import { getDb } from "@/lib/db"
 import * as schema from "@/lib/db/schema"
-import { magicLinkEmail, otpEmail, sendTransactionalEmail } from "@/lib/email/send"
 import {
-  isGithubAuthEnabled,
-  isGoogleAuthEnabled,
-  serverEnv,
-} from "@/lib/env"
+  magicLinkEmail,
+  otpEmail,
+  sendTransactionalEmail,
+} from "@/lib/email/send"
+import { isGithubAuthEnabled, isGoogleAuthEnabled, serverEnv } from "@/lib/env"
 
 function createAuth() {
   const env = serverEnv()

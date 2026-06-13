@@ -12,7 +12,13 @@ import { toast } from "sonner"
 
 import { authClient } from "@/lib/auth/auth-client"
 import { Button } from "@/components/ui/button"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
@@ -52,11 +58,10 @@ export function SignInForm({
     if (!validateEmail()) return
 
     setPending("otp")
-    const { error: authError } =
-      await authClient.emailOtp.sendVerificationOtp({
-        email: normalizedEmail,
-        type: "sign-in",
-      })
+    const { error: authError } = await authClient.emailOtp.sendVerificationOtp({
+      email: normalizedEmail,
+      type: "sign-in",
+    })
     setPending(null)
 
     if (authError) {
@@ -172,12 +177,14 @@ export function SignInForm({
                     aria-invalid={Boolean(error)}
                     required
                   />
-                  <FieldDescription>
-                    We email a 6-digit code. New addresses create an account.
-                  </FieldDescription>
+                  <FieldDescription>We email a 6-digit code.</FieldDescription>
                   <FieldError>{error}</FieldError>
                 </Field>
-                <Button type="submit" disabled={pending !== null} className="w-full">
+                <Button
+                  type="submit"
+                  disabled={pending !== null}
+                  className="w-full"
+                >
                   {pending === "otp" ? <Spinner /> : <PaperPlaneTiltIcon />}
                   Send sign-in code
                 </Button>
@@ -188,7 +195,10 @@ export function SignInForm({
               <FieldGroup>
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
-                    Sent to <span className="font-medium text-foreground">{normalizedEmail}</span>
+                    Sent to{" "}
+                    <span className="font-medium text-foreground">
+                      {normalizedEmail}
+                    </span>
                   </p>
                   <Button
                     type="button"
@@ -227,7 +237,11 @@ export function SignInForm({
                   </FieldDescription>
                   <FieldError>{error}</FieldError>
                 </Field>
-                <Button type="submit" disabled={pending !== null} className="w-full">
+                <Button
+                  type="submit"
+                  disabled={pending !== null}
+                  className="w-full"
+                >
                   {pending === "verify" ? <Spinner /> : null}
                   Verify and sign in
                 </Button>
@@ -274,7 +288,11 @@ export function SignInForm({
                   </FieldDescription>
                   <FieldError>{error}</FieldError>
                 </Field>
-                <Button type="submit" disabled={pending !== null} className="w-full">
+                <Button
+                  type="submit"
+                  disabled={pending !== null}
+                  className="w-full"
+                >
                   {pending === "link" ? <Spinner /> : <PaperPlaneTiltIcon />}
                   Email me a sign-in link
                 </Button>

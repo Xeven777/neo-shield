@@ -59,7 +59,13 @@ export async function sendTransactionalEmail({
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject, html, text }),
+    body: JSON.stringify({
+      from: env.EMAIL_FROM,
+      to: [to],
+      subject,
+      html,
+      text,
+    }),
     signal: AbortSignal.timeout(10_000),
   })
 

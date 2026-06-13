@@ -47,6 +47,12 @@ const actionLabels: Record<string, string> = {
   "github.repository_attached": "Repository attached to project",
   "github.repository_detached": "Repository detached from project",
   "github.disconnected": "GitHub disconnected",
+  "domain.added": "Domain added",
+  "wazuh.connected": "Wazuh ingestion enabled",
+  "wazuh.disconnected": "Wazuh ingestion disabled",
+  "network.added": "Authorized network range added",
+  "network.enabled": "Network range enabled",
+  "network.disabled": "Network range disabled",
   "scan.queued": "Scan queued",
   "finding.status_changed": "Finding status changed",
 }
@@ -209,13 +215,16 @@ export default async function DashboardPage() {
                   {assetLabels[type] ?? titleCase(type)}
                 </span>
                 <span className="font-mono text-xs text-muted-foreground">
-                  {value === 0 ? "not connected" : `${value} asset${value === 1 ? "" : "s"}`}
+                  {value === 0
+                    ? "not connected"
+                    : `${value} asset${value === 1 ? "" : "s"}`}
                 </span>
               </div>
             ))}
             <div className="mt-2 border-t border-border pt-3 text-xs text-muted-foreground">
-              Domain, repository and network collectors are introduced in Phase
-              1 and Phase 2.
+              Repository, domain, endpoint and network collectors are active.
+              Wazuh events and Nmap inventory appear as soon as their first
+              sync completes.
             </div>
           </CardContent>
         </Card>
@@ -265,7 +274,10 @@ export default async function DashboardPage() {
             ) : (
               <ul className="space-y-3">
                 {overview.recentActivity.map((entry) => (
-                  <li key={entry.id} className="flex items-start justify-between gap-3">
+                  <li
+                    key={entry.id}
+                    className="flex items-start justify-between gap-3"
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-sm">
                         {actionLabels[entry.action] ?? titleCase(entry.action)}
@@ -320,7 +332,8 @@ export default async function DashboardPage() {
             },
             {
               title: "Integrations",
-              detail: "GitHub and worker status are live; Wazuh and AWS are later.",
+              detail:
+                "GitHub, Wazuh and authorized network ranges are live; AWS is a later phase.",
               href: "/integrations",
               icon: StackIcon,
             },

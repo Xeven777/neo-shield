@@ -2,7 +2,11 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { CaretUpDownIcon, GearSixIcon, SignOutIcon } from "@phosphor-icons/react"
+import {
+  CaretUpDownIcon,
+  GearSixIcon,
+  SignOutIcon,
+} from "@phosphor-icons/react"
 import { toast } from "sonner"
 
 import { authClient } from "@/lib/auth/auth-client"
@@ -52,9 +56,7 @@ export function NavUser({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="sm" className="gap-2 px-1.5" />
-        }
+        render={<Button variant="ghost" size="sm" className="gap-2 px-1.5" />}
       >
         <Avatar className="size-6">
           {user.image ? <AvatarImage src={user.image} alt="" /> : null}
@@ -68,14 +70,14 @@ export function NavUser({
         <CaretUpDownIcon className="size-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
-        <DropdownMenuLabel className="flex flex-col">
-          <span className="truncate text-sm font-medium">{user.name}</span>
-          <span className="truncate text-xs font-normal text-muted-foreground">
-            {user.email}
-          </span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
         <DropdownMenuGroup>
+          <DropdownMenuLabel className="flex flex-col">
+            <span className="truncate text-sm font-medium">{user.name}</span>
+            <span className="truncate text-xs font-normal text-muted-foreground">
+              {user.email}
+            </span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
           <DropdownMenuItem render={<a href="/settings" />}>
             <GearSixIcon />
             Workspace settings

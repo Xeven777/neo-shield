@@ -1,0 +1,25 @@
+name: neoshield-lab
+
+# Optional helper for Phase 2 lab verification only.
+#
+#   LAB_CIDR=192.168.1.0/24 docker compose -f compose.lab.yaml --profile lab-nmap run --rm nmap-lab
+#
+# The main worker container runs Nmap from the bridge network, which is enough
+# for routed LAN targets but cannot see layer-2 MAC addresses. This one-shot
+# service uses host networking to confirm the worker image really contains a
+# working Nmap. Use only the exact CIDR you are authorized to scan; never a
+# public range.
+#
+# Do NOT switch the long-running worker to host networking just for this: it
+# would publish the worker API on every interface.
+
+services:
+  nmap-lab:
+    image: neoshield-worker:latest
+    build:
+      context: ../neoshield-python
+      dockerfile: Dockerfile
+    profiles: ["lab-nmap"]
+    network_mode: host
+    entrypoint: ["nmap"]
+    command: ["-sn", "-PE", "--max-retries", "2", "--host-timeout", "20s", "${LAB_CIDR:-192.168.1.0/24}"]

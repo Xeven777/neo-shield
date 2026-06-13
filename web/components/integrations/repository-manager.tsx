@@ -3,7 +3,11 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { FolderSimpleIcon, LinkBreakIcon, LinkIcon } from "@phosphor-icons/react"
+import {
+  FolderSimpleIcon,
+  LinkBreakIcon,
+  LinkIcon,
+} from "@phosphor-icons/react"
 import { toast } from "sonner"
 
 import {
@@ -148,7 +152,10 @@ export function RepositoryManager({
                           {repository.fullName}
                         </span>
                         {repository.private ? (
-                          <Badge variant="outline" className="font-mono text-[10px]">
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-[10px]"
+                          >
                             private
                           </Badge>
                         ) : null}
@@ -207,11 +214,7 @@ export function RepositoryManager({
                               : "Only workspace admins can attach repositories"
                           }
                         >
-                          {pending ? (
-                            <Spinner />
-                          ) : (
-                            <LinkIcon />
-                          )}
+                          {pending ? <Spinner /> : <LinkIcon />}
                           {repository.assetId ? "Move" : "Attach"}
                         </Button>
                         {repository.assetId ? (

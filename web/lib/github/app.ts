@@ -25,7 +25,8 @@ function base64url(value: string) {
 
 function appPrivateKey() {
   const key = serverEnv().GITHUB_APP_PRIVATE_KEY
-  if (!key) throw new GithubAppError("GitHub App private key is not configured.")
+  if (!key)
+    throw new GithubAppError("GitHub App private key is not configured.")
   // Supports PEMs pasted as a single line with escaped newlines.
   return key.replace(/\\n/g, "\n")
 }
@@ -86,11 +87,15 @@ export async function getInstallationToken(installationId: string) {
   const data = await githubRequest<{
     token: string
     expires_at: string
-  }>(`/app/installations/${encodeURIComponent(installationId)}/access_tokens`, createAppJwt(), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({}),
-  })
+  }>(
+    `/app/installations/${encodeURIComponent(installationId)}/access_tokens`,
+    createAppJwt(),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }
+  )
 
   const expiresAt = Date.parse(data.expires_at)
   tokenCache.set(installationId, {
@@ -150,10 +155,7 @@ export async function listInstallationRepositories(
         default_branch: string
         owner: { login: string }
       }>
-    }>(
-      `/installation/repositories?per_page=100&page=${page}`,
-      token
-    )
+    }>(`/installation/repositories?per_page=100&page=${page}`, token)
 
     for (const repository of data.repositories) {
       repositories.push({

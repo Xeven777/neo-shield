@@ -11,7 +11,9 @@ function pagination(searchParams: URLSearchParams) {
   const offset = Number(searchParams.get("offset") ?? 0)
 
   return {
-    limit: Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 100) : 25,
+    limit: Number.isFinite(limit)
+      ? Math.min(Math.max(Math.trunc(limit), 1), 100)
+      : 25,
     offset: Number.isFinite(offset) ? Math.max(Math.trunc(offset), 0) : 0,
   }
 }
@@ -39,6 +41,9 @@ export async function GET(request: NextRequest) {
       pagination(searchParams)
     )
 
-    return json({ data: page.items, meta: { total: page.total, limit: page.limit, offset: page.offset } })
+    return json({
+      data: page.items,
+      meta: { total: page.total, limit: page.limit, offset: page.offset },
+    })
   })
 }

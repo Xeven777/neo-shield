@@ -37,6 +37,9 @@ class WorkerState:
     interval_seconds: int = 30
     last_job_at: datetime | None = None
     last_job_ok: bool | None = None
+    wazuh_last_sync_at: datetime | None = None
+    wazuh_last_error: str | None = None
+    wazuh_alerts_ingested: int = 0
 
     def is_online(self, now: datetime | None = None) -> bool:
         if self.last_success_at is None:
@@ -65,6 +68,13 @@ class WorkerState:
                 self.last_job_at.isoformat() if self.last_job_at else None
             ),
             "lastJobOk": self.last_job_ok,
+            "wazuhLastSyncAt": (
+                self.wazuh_last_sync_at.isoformat()
+                if self.wazuh_last_sync_at
+                else None
+            ),
+            "wazuhLastError": self.wazuh_last_error,
+            "wazuhAlertsIngested": self.wazuh_alerts_ingested,
         }
 
 

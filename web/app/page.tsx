@@ -86,11 +86,17 @@ export default async function LandingPage() {
           </Badge>
         </div>
         <nav className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" render={<Link href="/sign-in" />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            render={<Link href="/sign-in" />}
+          >
             Sign in
           </Button>
           <Button
             size="sm"
+            nativeButton={false}
             render={<Link href={session ? "/dashboard" : "/sign-in"} />}
           >
             {session ? "Open dashboard" : "Get started"}
@@ -120,9 +126,8 @@ export default async function LandingPage() {
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
-                render={
-                  <Link href={session ? "/dashboard" : "/sign-in"} />
-                }
+                nativeButton={false}
+                render={<Link href={session ? "/dashboard" : "/sign-in"} />}
               >
                 {session ? "Open dashboard" : "Sign in to your workspace"}
                 <ArrowRightIcon data-icon="inline-end" />
@@ -130,6 +135,7 @@ export default async function LandingPage() {
               <Button
                 size="lg"
                 variant="outline"
+                nativeButton={false}
                 render={<Link href="/sign-in" />}
               >
                 Email code or Google

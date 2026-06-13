@@ -60,6 +60,78 @@ class Settings(BaseSettings):
     tool_timeout_seconds: int = 180
     stale_finding_absences: int = 2
 
+    # Domain checks (DNS, TLS, redirects, security headers).
+    domain_timeout_seconds: float = 15.0
+    domain_max_redirects: int = 5
+    domain_certificate_warning_days: int = 30
+
+    # ------------------------------------------------------------------
+    # Wazuh endpoint monitoring (Phase 2)
+    #
+    # Credentials stay in this process's environment. The web UI never sees
+    # them and only toggles ingestion for a project. The indexer and manager
+    # ports must stay private (localhost or the Docker network).
+    # ------------------------------------------------------------------
+    wazuh_enabled: bool = False
+    wazuh_indexer_url: str | None = None
+    wazuh_indexer_username: str | None = None
+    wazuh_indexer_password: str | None = None
+    # Optional bearer token instead of basic auth (e.g. a read-only API key).
+    wazuh_indexer_api_token: str | None = None
+    wazuh_indexer_verify_tls: bool = True
+    wazuh_indexer_ca_path: str | None = None
+    wazuh_index_pattern: str = "wazuh-alerts-*"
+    wazuh_min_level: int = 5
+    wazuh_poll_interval_seconds: int = 60
+    wazuh_initial_lookback_minutes: int = 60
+    wazuh_endpoint_lookback_hours: int = 24
+    wazuh_max_alerts_per_poll: int = 200
+    wazuh_request_timeout_seconds: float = 20.0
+
+    # Optional manager API for agent inventory/status. Alerts themselves come
+    # from the indexer above.
+    wazuh_manager_url: str | None = None
+    wazuh_manager_username: str | None = None
+    wazuh_manager_password: str | None = None
+    wazuh_manager_verify_tls: bool = True
+
+    # ------------------------------------------------------------------
+    # Authorized network discovery (Phase 2)
+    # ------------------------------------------------------------------
+    nmap_path: str | None = None
+    # Smallest network the worker will accept (/24 = at most 256 addresses).
+    network_max_prefix_length: int = 24
+    network_max_hosts: int = 256
+    network_scan_timeout_seconds: int = 480
+    network_host_timeout_seconds: int = 60
+    network_max_output_bytes: int = 8 * 1024 * 1024
+    # Service detection is capped so one broad range cannot occupy a worker.
+    network_max_service_hosts: int = 64
+    # Conservative, explicit port set. No top-1000 sweep, no NSE scripts.
+    network_ports: str = (
+        "21,22,23,25,53,80,110,143,443,445,993,995,1433,1521,2049,2375,"
+        "3306,3389,5432,5900,6379,8080,8443,9200,11211,27017"
+    )
+    # Kept false: public ranges are always refused. There is no UI override.
+    network_allow_public: bool = False
+
+    @property
+    def wazuh_configured(self) -> bool:
+        if not self.wazuh_enabled or not self.wazuh_indexer_url:
+            return False
+        return bool(
+            self.wazuh_indexer_api_token
+            or (self.wazuh_indexer_username and self.wazuh_indexer_password)
+        )
+
+    @property
+    def wazuh_manager_configured(self) -> bool:
+        return bool(
+            self.wazuh_manager_url
+            and self.wazuh_manager_username
+            and self.wazuh_manager_password
+        )
+
     @property
     def github_private_key(self) -> str | None:
         if not self.github_app_private_key:

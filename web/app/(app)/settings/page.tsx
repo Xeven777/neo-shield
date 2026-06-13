@@ -77,7 +77,8 @@ export default async function SettingsPage() {
           <CardHeader>
             <CardTitle>Workspace</CardTitle>
             <CardDescription>
-              The slug is fixed: <span className="font-mono">{workspace.slug}</span>
+              The slug is fixed:{" "}
+              <span className="font-mono">{workspace.slug}</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="gap-5">
@@ -93,7 +94,9 @@ export default async function SettingsPage() {
               </div>
               <div className="flex justify-between gap-3">
                 <span>Created</span>
-                <span className="font-mono">{formatDate(workspace.createdAt)}</span>
+                <span className="font-mono">
+                  {formatDate(workspace.createdAt)}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -125,7 +128,10 @@ export default async function SettingsPage() {
                       </p>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono text-[10px]">
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[10px]"
+                      >
                         {member.role}
                       </Badge>
                     </TableCell>

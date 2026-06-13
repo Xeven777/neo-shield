@@ -68,7 +68,9 @@ export async function createProject(input: {
   data: CreateProjectInput
 }): Promise<Project> {
   if (!canManageWorkspace(input.actorRole)) {
-    throw new AuthorizationError("You do not have permission to create projects.")
+    throw new AuthorizationError(
+      "You do not have permission to create projects."
+    )
   }
 
   const data = createProjectSchema.parse(input.data)
@@ -109,7 +111,9 @@ export async function updateProject(input: {
   data: UpdateProjectInput
 }): Promise<Project | null> {
   if (!canManageWorkspace(input.actorRole)) {
-    throw new AuthorizationError("You do not have permission to update projects.")
+    throw new AuthorizationError(
+      "You do not have permission to update projects."
+    )
   }
 
   const existing = await getProject(input.workspaceId, input.projectId)
@@ -158,7 +162,9 @@ export async function deleteProject(input: {
   actorRole: WorkspaceRole
 }): Promise<boolean> {
   if (!canManageWorkspace(input.actorRole)) {
-    throw new AuthorizationError("You do not have permission to delete projects.")
+    throw new AuthorizationError(
+      "You do not have permission to delete projects."
+    )
   }
 
   const existing = await getProject(input.workspaceId, input.projectId)
@@ -177,7 +183,6 @@ export async function deleteProject(input: {
 
   return true
 }
-
 
 function isUniqueViolation(error: unknown) {
   if (typeof error !== "object" || error === null) return false

@@ -16,7 +16,11 @@ export async function GET() {
 export async function POST(request: Request) {
   return withApiContext(async ({ workspaceId, userId, role }) => {
     if (!canManageWorkspace(role)) {
-      return jsonError(403, "forbidden", "Only workspace admins can add workers.")
+      return jsonError(
+        403,
+        "forbidden",
+        "Only workspace admins can add workers."
+      )
     }
 
     const body = createWorkerSchema.parse(await readJson(request))

@@ -31,7 +31,11 @@ export default async function OnboardingPage() {
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
         A workspace groups projects, assets, findings and worker tokens. Signed
-        in as <span className="font-medium text-foreground">{session.user.email}</span>.
+        in as{" "}
+        <span className="font-medium text-foreground">
+          {session.user.email}
+        </span>
+        .
       </p>
 
       <div className="mt-8">

@@ -9,7 +9,10 @@ import {
 } from "@/lib/auth/session"
 import { createWorker, revokeWorker } from "@/lib/services/workers"
 import { renameWorkspace } from "@/lib/services/workspaces"
-import { createWorkerSchema, workspaceNameSchema } from "@/lib/validation/schemas"
+import {
+  createWorkerSchema,
+  workspaceNameSchema,
+} from "@/lib/validation/schemas"
 import { fieldErrorsFrom, type FormState } from "@/lib/forms"
 
 export async function renameWorkspaceAction(
@@ -57,7 +60,10 @@ export async function createWorkerAction(
   const { session, workspace, role } = await requireWorkspace()
 
   if (!canManageWorkspace(role)) {
-    return { status: "error", message: "Only workspace admins can add workers." }
+    return {
+      status: "error",
+      message: "Only workspace admins can add workers.",
+    }
   }
 
   const parsed = createWorkerSchema.safeParse({ name: formData.get("name") })
@@ -96,7 +102,10 @@ export async function revokeWorkerAction(workerId: string): Promise<FormState> {
   const { session, workspace, role } = await requireWorkspace()
 
   if (!canManageWorkspace(role)) {
-    return { status: "error", message: "Only workspace admins can revoke workers." }
+    return {
+      status: "error",
+      message: "Only workspace admins can revoke workers.",
+    }
   }
 
   try {

@@ -11,7 +11,10 @@ ENV HOME=/home/worker
 ENV XDG_CACHE_HOME=/home/worker/.cache
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates nmap libcap2-bin \
+    # Nmap host discovery (ICMP/SYN ping) needs a raw socket. The worker runs
+    # unprivileged, so grant the capability on the binary instead of the container.
+    && setcap cap_net_raw+eip /usr/bin/nmap \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /usr/local/bin/uv

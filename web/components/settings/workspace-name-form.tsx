@@ -35,7 +35,9 @@ export function WorkspaceNameForm({
     <form action={action} noValidate>
       <FieldGroup className="gap-4">
         <Field data-invalid={Boolean(state?.fieldErrors?.name)}>
-          <FieldLabel htmlFor="workspace-name-settings">Workspace name</FieldLabel>
+          <FieldLabel htmlFor="workspace-name-settings">
+            Workspace name
+          </FieldLabel>
           <Input
             id="workspace-name-settings"
             name="name"

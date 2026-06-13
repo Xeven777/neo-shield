@@ -2,19 +2,11 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { ShieldWarningIcon } from "@phosphor-icons/react/dist/ssr"
 
-import {
-  FindingStatusBadge,
-  SeverityBadge,
-} from "@/components/findings/badges"
+import { FindingStatusBadge, SeverityBadge } from "@/components/findings/badges"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Empty,
   EmptyDescription,
@@ -222,7 +214,11 @@ export default async function FindingsPage({
               Apply
             </Button>
             {activeFilters > 0 ? (
-              <Button variant="ghost" size="sm" render={<Link href="/findings" />}>
+              <Button
+                variant="ghost"
+                size="sm"
+                render={<Link href="/findings" />}
+              >
                 Reset
               </Button>
             ) : null}
@@ -238,7 +234,9 @@ export default async function FindingsPage({
                 <ShieldWarningIcon />
               </EmptyMedia>
               <EmptyTitle>
-                {activeFilters > 0 ? "No findings match" : "No findings ingested yet"}
+                {activeFilters > 0
+                  ? "No findings match"
+                  : "No findings ingested yet"}
               </EmptyTitle>
               <EmptyDescription>
                 {activeFilters > 0
@@ -263,39 +261,41 @@ export default async function FindingsPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {results.items.map(({ finding, assetName, projectName }) => (
-                      <TableRow key={finding.id}>
-                        <TableCell>
-                          <SeverityBadge severity={finding.severity} />
-                        </TableCell>
-                        <TableCell className="max-w-80">
-                          <Link
-                            href={`/findings/${finding.id}`}
-                            className="line-clamp-2 text-sm font-medium underline-offset-4 hover:underline"
-                          >
-                            {finding.title}
-                          </Link>
-                          <p className="truncate font-mono text-[10px] text-muted-foreground">
-                            {finding.sourceTool}
-                            {finding.sourceRuleId
-                              ? ` · ${finding.sourceRuleId}`
-                              : ""}
-                          </p>
-                        </TableCell>
-                        <TableCell className="max-w-48 truncate font-mono text-xs text-muted-foreground">
-                          {assetName}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {projectName}
-                        </TableCell>
-                        <TableCell>
-                          <FindingStatusBadge status={finding.status} />
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs whitespace-nowrap text-muted-foreground">
-                          {formatRelativeTime(finding.lastSeenAt)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {results.items.map(
+                      ({ finding, assetName, projectName }) => (
+                        <TableRow key={finding.id}>
+                          <TableCell>
+                            <SeverityBadge severity={finding.severity} />
+                          </TableCell>
+                          <TableCell className="max-w-80">
+                            <Link
+                              href={`/findings/${finding.id}`}
+                              className="line-clamp-2 text-sm font-medium underline-offset-4 hover:underline"
+                            >
+                              {finding.title}
+                            </Link>
+                            <p className="truncate font-mono text-[10px] text-muted-foreground">
+                              {finding.sourceTool}
+                              {finding.sourceRuleId
+                                ? ` · ${finding.sourceRuleId}`
+                                : ""}
+                            </p>
+                          </TableCell>
+                          <TableCell className="max-w-48 truncate font-mono text-xs text-muted-foreground">
+                            {assetName}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {projectName}
+                          </TableCell>
+                          <TableCell>
+                            <FindingStatusBadge status={finding.status} />
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs whitespace-nowrap text-muted-foreground">
+                            {formatRelativeTime(finding.lastSeenAt)}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -314,7 +314,9 @@ export default async function FindingsPage({
                     variant="outline"
                     size="sm"
                     disabled={page <= 1}
-                    render={page > 1 ? <Link href={pageHref(page - 1)} /> : undefined}
+                    render={
+                      page > 1 ? <Link href={pageHref(page - 1)} /> : undefined
+                    }
                   >
                     Previous
                   </Button>
@@ -326,7 +328,9 @@ export default async function FindingsPage({
                     size="sm"
                     disabled={page >= totalPages}
                     render={
-                      page < totalPages ? <Link href={pageHref(page + 1)} /> : undefined
+                      page < totalPages ? (
+                        <Link href={pageHref(page + 1)} />
+                      ) : undefined
                     }
                   >
                     Next

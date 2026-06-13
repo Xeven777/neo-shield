@@ -9,14 +9,13 @@ import {
   findingEvidence,
   findingStatusEvent,
   project,
+  scanRun,
   type FindingRow,
+  type ScanRun,
   type FindingSeverity,
   type FindingStatus,
 } from "@/lib/db/schema"
-import {
-  AuthorizationError,
-  canManageWorkspace,
-} from "@/lib/auth/session"
+import { AuthorizationError, canManageWorkspace } from "@/lib/auth/session"
 import { recordAudit } from "@/lib/services/audit"
 import type { FindingFilter } from "@/lib/validation/schemas"
 import type { WorkspaceRole } from "@/lib/db/schema"
@@ -136,6 +135,7 @@ export async function getFindingCounts(
 
 export type FindingDetail = FindingListItem & {
   evidence: typeof findingEvidence.$inferSelect | null
+  scanRun: ScanRun | null
   events: Array<typeof findingStatusEvent.$inferSelect>
 }
 
@@ -156,9 +156,7 @@ export async function getFinding(
     .from(finding)
     .innerJoin(asset, eq(asset.id, finding.assetId))
     .innerJoin(project, eq(project.id, finding.projectId))
-    .where(
-      and(eq(finding.workspaceId, workspaceId), eq(finding.id, findingId))
-    )
+    .where(and(eq(finding.workspaceId, workspaceId), eq(finding.id, findingId)))
     .limit(1)
 
   if (!row) return null
@@ -176,7 +174,17 @@ export async function getFinding(
     .orderBy(desc(findingStatusEvent.createdAt))
     .limit(20)
 
-  return { ...row, evidence: evidence ?? null, events }
+  let run: ScanRun | null = null
+  if (evidence?.scanRunId) {
+    const [row] = await db
+      .select()
+      .from(scanRun)
+      .where(eq(scanRun.id, evidence.scanRunId))
+      .limit(1)
+    run = row ?? null
+  }
+
+  return { ...row, evidence: evidence ?? null, scanRun: run, events }
 }
 
 export async function updateFindingStatus(input: {

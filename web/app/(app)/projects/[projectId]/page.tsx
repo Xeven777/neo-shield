@@ -67,7 +67,8 @@ export default async function ProjectDetailPage({
       <Button
         variant="ghost"
         size="sm"
-        className="-ml-2 mb-4"
+        className="mb-4 -ml-2"
+        nativeButton={false}
         render={<Link href="/projects" />}
       >
         <ArrowLeftIcon />
@@ -127,8 +128,8 @@ export default async function ProjectDetailPage({
                   </EmptyMedia>
                   <EmptyTitle>No assets attached</EmptyTitle>
                   <EmptyDescription>
-                    Asset connections arrive in Phase 1 (GitHub, domains) and
-                    Phase 2 (Wazuh endpoints, authorized networks).
+                    Attach a GitHub repository or add a domain, Wazuh endpoint
+                    or authorized network range in Integrations.
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -168,7 +169,12 @@ export default async function ProjectDetailPage({
                               : "disabled"}
                         </TableCell>
                         <TableCell className="text-right">
-                          {asset.type === "repository" ? (
+                          {[
+                            "repository",
+                            "domain",
+                            "endpoint",
+                            "network",
+                          ].includes(asset.type) ? (
                             <ScanNowButton
                               assetId={asset.id}
                               disabled={!canScan || !asset.enabled}
@@ -187,7 +193,9 @@ export default async function ProjectDetailPage({
         <Card>
           <CardHeader>
             <CardTitle>Project metadata</CardTitle>
-            <CardDescription>Read-only identifiers and timestamps.</CardDescription>
+            <CardDescription>
+              Read-only identifiers and timestamps.
+            </CardDescription>
           </CardHeader>
           <CardContent className="gap-3 text-sm">
             <div className="flex justify-between gap-3">

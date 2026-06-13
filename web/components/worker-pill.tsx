@@ -2,7 +2,13 @@ import Link from "next/link"
 
 import { cn } from "@/lib/utils"
 
-export function WorkerPill({ online, total }: { online: number; total: number }) {
+export function WorkerPill({
+  online,
+  total,
+}: {
+  online: number
+  total: number
+}) {
   const online_ = online > 0
 
   return (
@@ -24,10 +30,16 @@ export function WorkerPill({ online, total }: { online: number; total: number })
       <span
         className={cn(
           "font-mono text-[10px] tracking-wide uppercase",
-          online_ ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+          online_
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-muted-foreground"
         )}
       >
-        {total === 0 ? "none" : online_ ? `${online}/${total} online` : "offline"}
+        {total === 0
+          ? "none"
+          : online_
+            ? `${online}/${total} online`
+            : "offline"}
       </span>
     </Link>
   )

@@ -46,7 +46,9 @@ export function FindingStatusForm({
     <form onSubmit={submit} className="space-y-3">
       <input type="hidden" name="findingId" value={findingId} />
       <label className="block space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">Status</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          Status
+        </span>
         <select
           name="status"
           defaultValue={currentStatus}

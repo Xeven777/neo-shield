@@ -10,15 +10,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
 from neoshield.config import Settings
 from neoshield.db.store import AssetTarget, ClaimedJob, ScanStore, StoreError
+from neoshield.worker.domain import DomainBlockedError, DomainCheckError, check_domain
 from neoshield.worker.github_client import (
     GithubError,
     download_tarball,
@@ -26,10 +28,26 @@ from neoshield.worker.github_client import (
     resolve_commit,
     safe_extract,
 )
+from neoshield.worker.network_scan import (
+    NetworkScanError,
+    NetworkScopeError,
+    scan_network,
+    validate_scope,
+)
+from neoshield.worker.normalize import Finding, clip
 from neoshield.worker.runner import WorkerState
 from neoshield.worker.scanners import ScannerBinaries, run_all
+from neoshield.worker.wazuh_client import (
+    WazuhAuthError,
+    WazuhClient,
+    WazuhError,
+)
+from neoshield.worker.wazuh_normalize import normalize_agent, normalize_alert
 
 logger = logging.getLogger(__name__)
+
+# A domain run is complete only when all three check groups produced a result.
+DOMAIN_TOOLS = ["dns", "tls", "http"]
 
 
 @dataclass
@@ -88,11 +106,30 @@ class JobRunner:
             await self._fail(job, None, "Asset is no longer available", retryable=False)
             return
 
-        if not target.identifier.startswith("github:"):
+        if target.asset_type == "repository":
+            await self._execute_repository(job, target, worker_id)
+        elif target.asset_type == "domain":
+            await self._execute_domain(job, target, worker_id)
+        elif target.asset_type == "endpoint":
+            await self._execute_endpoint(job, target, worker_id)
+        elif target.asset_type == "network":
+            await self._execute_network(job, target, worker_id)
+        else:
             await self._fail(
                 job,
                 None,
                 "Unsupported asset type for this worker",
+                retryable=False,
+            )
+
+    async def _execute_repository(
+        self, job: ClaimedJob, target: AssetTarget, worker_id: str
+    ) -> None:
+        if not target.identifier.startswith("github:"):
+            await self._fail(
+                job,
+                None,
+                "Unsupported repository asset for this worker",
                 retryable=False,
             )
             return
@@ -247,6 +284,379 @@ class JobRunner:
             job.id,
             len(findings),
             ", ".join(successful_tools),
+        )
+
+    async def _execute_domain(
+        self, job: ClaimedJob, target: AssetTarget, worker_id: str
+    ) -> None:
+        domain = target.config.get("domain")
+        if not isinstance(domain, str) or not domain.strip():
+            await self._fail(
+                job, None, "Domain asset metadata is incomplete", retryable=False
+            )
+            return
+
+        await self.store.mark_running(
+            job.id, worker_id, self.settings.job_lease_seconds
+        )
+
+        findings: list[Finding] = []
+        snapshot: dict[str, object] = {}
+        error: Exception | None = None
+
+        lease_stop = asyncio.Event()
+        lease_task = asyncio.create_task(
+            self._renew_lease(job.id, worker_id, lease_stop)
+        )
+        try:
+            findings, snapshot = await check_domain(domain.strip(), self.settings)
+        except Exception as caught:  # noqa: BLE001 - classified below
+            error = caught
+        finally:
+            lease_stop.set()
+            await asyncio.gather(lease_task, return_exceptions=True)
+
+        if isinstance(error, DomainBlockedError):
+            # A private/reserved answer is a policy refusal, not a transient fault.
+            await self._fail(job, None, str(error), retryable=False)
+            return
+
+        if error is not None:
+            if not isinstance(error, DomainCheckError):
+                logger.exception(
+                    "domain scan job %s failed unexpectedly", job.id, exc_info=error
+                )
+            await self._fail(job, None, str(error), retryable=True)
+            return
+
+        run_id = await self.store.start_run(job, target, snapshot, scanner="domain")
+
+        counts = Counter(finding.source_tool for finding in findings)
+        summaries = [
+            {
+                "name": tool,
+                "version": None,
+                "status": "ok",
+                "findingCount": counts.get(tool, 0),
+                "error": None,
+            }
+            for tool in DOMAIN_TOOLS
+        ]
+
+        try:
+            await self.store.complete_success(
+                job,
+                target,
+                run_id,
+                findings,
+                summaries,
+                DOMAIN_TOOLS,
+                stale_after=self.settings.stale_finding_absences,
+            )
+        except StoreError as error:
+            # Keep the run row truthful; the job becomes retryable again.
+            await self._fail(job, run_id, str(error), retryable=True)
+            return
+
+        self._record_outcome(True)
+
+        logger.info(
+            "domain scan job %s completed: %s findings for %s",
+            job.id,
+            len(findings),
+            domain,
+        )
+
+    async def _execute_endpoint(
+        self, job: ClaimedJob, target: AssetTarget, worker_id: str
+    ) -> None:
+        agent_id = target.config.get("agentId")
+        if not isinstance(agent_id, str) or not agent_id:
+            if target.identifier.startswith("wazuh:"):
+                agent_id = target.identifier.split(":", 1)[1]
+            else:
+                await self._fail(
+                    job,
+                    None,
+                    "Endpoint asset is missing its Wazuh agent id",
+                    retryable=False,
+                )
+                return
+
+        if not self.settings.wazuh_configured:
+            await self._fail(
+                job,
+                None,
+                "Wazuh is not configured on this worker "
+                "(NEOSHIELD_WAZUH_ENABLED / indexer URL and credentials)",
+                retryable=False,
+            )
+            return
+
+        integration = await self.store.get_wazuh_integration_for_workspace(
+            target.workspace_id,
+            default_min_level=self.settings.wazuh_min_level,
+        )
+        if integration is None:
+            await self._fail(
+                job,
+                None,
+                "Wazuh ingestion is not enabled for this workspace",
+                retryable=False,
+            )
+            return
+
+        await self.store.mark_running(
+            job.id, worker_id, self.settings.job_lease_seconds
+        )
+
+        lookback = datetime.now(UTC) - timedelta(
+            hours=self.settings.wazuh_endpoint_lookback_hours
+        )
+        latest = await self.store.latest_security_event_time(target.asset_id)
+        after = max(lookback, latest) if latest is not None else lookback
+
+        snapshot: dict[str, object] = {
+            "provider": "wazuh",
+            "agentId": agent_id,
+            "agentName": target.display_name,
+            "windowStart": after.isoformat(),
+        }
+        run_id = await self.store.start_run(
+            job, target, snapshot, scanner="endpoint"
+        )
+
+        lease_stop = asyncio.Event()
+        lease_task = asyncio.create_task(
+            self._renew_lease(job.id, worker_id, lease_stop)
+        )
+        client = WazuhClient(self.settings)
+        result = None
+        hits_count = 0
+        agent_state: str | None = None
+
+        try:
+            if client.manager_configured:
+                raw_agents = await client.list_agents()
+                agents = [
+                    normalized
+                    for normalized in (
+                        normalize_agent(entry) for entry in raw_agents
+                    )
+                    if normalized is not None
+                ]
+                selected = [
+                    agent for agent in agents if agent.agent_id == agent_id
+                ]
+                if selected:
+                    agent_state = selected[0].status
+                    await self.store.sync_wazuh_agents(
+                        integration, selected
+                    )
+
+            hits = await client.search_alerts(
+                after=after,
+                min_level=integration.min_level,
+                size=self.settings.wazuh_max_alerts_per_poll,
+                agent_id=agent_id,
+            )
+            hits_count = len(hits)
+            alerts = [
+                alert
+                for alert in (
+                    normalize_alert(hit, min_level=integration.min_level)
+                    for hit in hits
+                )
+                if alert is not None
+            ]
+            result = await self.store.ingest_wazuh_alerts(
+                integration, alerts, run_id=run_id
+            )
+        except WazuhAuthError as error:
+            await self._fail(job, run_id, str(error), retryable=False)
+            return
+        except WazuhError as error:
+            await self._fail(job, run_id, str(error), retryable=True)
+            return
+        finally:
+            lease_stop.set()
+            await asyncio.gather(lease_task, return_exceptions=True)
+            await client.aclose()
+
+        if result is None:
+            await self._fail(
+                job, run_id, "Wazuh collection returned no result", retryable=True
+            )
+            return
+
+        snapshot.update(
+            {
+                "alertsFetched": hits_count,
+                "eventsIngested": result.events,
+                "findingsObserved": result.findings,
+                "duplicates": result.duplicates,
+                "agentState": agent_state,
+            }
+        )
+        tools = [
+            {
+                "name": "wazuh",
+                "version": None,
+                "status": "ok",
+                "findingCount": result.findings,
+                "error": None,
+            }
+        ]
+
+        try:
+            await self.store.complete_ingest_run(
+                job,
+                run_id,
+                tools=tools,
+                finding_count=result.findings,
+                snapshot=snapshot,
+            )
+        except StoreError as error:
+            await self._fail(job, run_id, str(error), retryable=True)
+            return
+
+        self._record_outcome(True)
+        logger.info(
+            "endpoint scan job %s completed: %s alert(s), %s event(s), "
+            "%s finding(s) for agent %s",
+            job.id,
+            hits_count,
+            result.events,
+            result.findings,
+            agent_id,
+        )
+
+    async def _execute_network(
+        self, job: ClaimedJob, target: AssetTarget, worker_id: str
+    ) -> None:
+        cidr = target.config.get("cidr")
+        profile = target.config.get("scanProfile") or "services"
+        authorization = target.config.get("authorization")
+
+        if not isinstance(cidr, str) or not cidr.strip():
+            await self._fail(
+                job, None, "Network asset is missing its CIDR range", retryable=False
+            )
+            return
+
+        if profile not in {"discovery", "services"}:
+            await self._fail(
+                job, None, "Unsupported network scan profile", retryable=False
+            )
+            return
+
+        if not isinstance(authorization, dict):
+            await self._fail(
+                job,
+                None,
+                "Network asset has no recorded authorization",
+                retryable=False,
+            )
+            return
+
+        confirmed_by = authorization.get("confirmedByUserId")
+        confirmed_at = authorization.get("confirmedAt")
+        authorized_scope = authorization.get("scope")
+        if not confirmed_by or not confirmed_at or not authorized_scope:
+            await self._fail(
+                job,
+                None,
+                "Network asset authorization record is incomplete",
+                retryable=False,
+            )
+            return
+
+        try:
+            network = validate_scope(cidr, self.settings)
+        except NetworkScopeError as error:
+            await self._fail(job, None, str(error), retryable=False)
+            return
+
+        if str(network) != cidr.strip() or str(network) != authorized_scope:
+            await self._fail(
+                job,
+                None,
+                "Scan scope does not match the authorized CIDR",
+                retryable=False,
+            )
+            return
+
+        await self.store.mark_running(
+            job.id, worker_id, self.settings.job_lease_seconds
+        )
+
+        lease_stop = asyncio.Event()
+        lease_task = asyncio.create_task(
+            self._renew_lease(job.id, worker_id, lease_stop)
+        )
+        outcome = None
+        error: Exception | None = None
+        try:
+            outcome = await scan_network(cidr.strip(), str(profile), self.settings)
+        except Exception as caught:  # noqa: BLE001 - classified below
+            error = caught
+        finally:
+            lease_stop.set()
+            await asyncio.gather(lease_task, return_exceptions=True)
+
+        if isinstance(error, NetworkScopeError):
+            await self._fail(job, None, str(error), retryable=False)
+            return
+        if isinstance(error, NetworkScanError):
+            retryable = "not installed" not in str(error)
+            await self._fail(job, None, str(error), retryable=retryable)
+            return
+        if error is not None:
+            logger.exception(
+                "network scan job %s failed unexpectedly", job.id, exc_info=error
+            )
+            await self._fail(job, None, clip(error, 300), retryable=True)
+            return
+
+        if outcome is None:
+            await self._fail(
+                job, None, "Network scan returned no result", retryable=True
+            )
+            return
+
+        run_id = await self.store.start_run(
+            job, target, outcome.snapshot, scanner="network"
+        )
+        tools = [
+            {
+                "name": "nmap",
+                "version": outcome.snapshot.get("nmapVersion"),
+                "status": "ok",
+                "findingCount": len(outcome.findings),
+                "error": None,
+            }
+        ]
+
+        try:
+            await self.store.complete_network_success(
+                job,
+                target,
+                run_id,
+                outcome,
+                tools,
+                stale_after=self.settings.stale_finding_absences,
+            )
+        except StoreError as caught:
+            await self._fail(job, run_id, str(caught), retryable=True)
+            return
+
+        self._record_outcome(True)
+        logger.info(
+            "network scan job %s completed: %s host(s), %s finding(s) for %s",
+            job.id,
+            len(outcome.hosts),
+            len(outcome.findings),
+            cidr,
         )
 
     async def _renew_lease(

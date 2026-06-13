@@ -114,7 +114,10 @@ export async function findActiveWorkerByToken(
     .select()
     .from(worker)
     .where(
-      and(eq(worker.tokenHash, hashWorkerToken(token)), eq(worker.status, "active"))
+      and(
+        eq(worker.tokenHash, hashWorkerToken(token)),
+        eq(worker.status, "active")
+      )
     )
     .limit(1)
 

@@ -9,12 +9,7 @@ import {
 
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Empty,
   EmptyDescription,
@@ -38,8 +33,10 @@ export const metadata: Metadata = { title: "Scans" }
 
 const jobStatusStyles: Record<string, string> = {
   queued: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  leased: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  running: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  leased:
+    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  running:
+    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   completed:
     "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   failed: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
@@ -85,8 +82,8 @@ export default async function ScansPage() {
         <CardHeader>
           <CardTitle>Scan queue</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Newest first. Repository assets are scanned by the worker that claims
-            the job.
+            Newest first. Repository, domain, endpoint and authorized network
+            jobs are executed by the worker that claims them.
           </p>
         </CardHeader>
         <CardContent>
@@ -98,8 +95,8 @@ export default async function ScansPage() {
                 </EmptyMedia>
                 <EmptyTitle>No scans queued</EmptyTitle>
                 <EmptyDescription>
-                  Attach a GitHub repository to a project, then use “Scan now” on
-                  the project page.
+                  Attach an asset in Integrations, then use “Scan now” on the
+                  project, asset or integrations page.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -108,7 +105,8 @@ export default async function ScansPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Repository</TableHead>
+                    <TableHead>Asset</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead>Project</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Attempts</TableHead>
@@ -125,6 +123,9 @@ export default async function ScansPage() {
                         >
                           {assetName}
                         </Link>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {job.type}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {projectName}
@@ -161,8 +162,8 @@ export default async function ScansPage() {
         <CardHeader>
           <CardTitle>Scan runs</CardTitle>
           <p className="text-sm text-muted-foreground">
-            One row per worker execution, including which tools succeeded and how
-            many findings were observed.
+            One row per worker execution, including which tools succeeded and
+            how many findings were observed.
           </p>
         </CardHeader>
         <CardContent>
@@ -176,7 +177,7 @@ export default async function ScansPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Repository</TableHead>
+                    <TableHead>Asset</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tools</TableHead>
                     <TableHead>Findings</TableHead>
@@ -188,6 +189,9 @@ export default async function ScansPage() {
                     <TableRow key={run.id}>
                       <TableCell className="font-mono text-xs">
                         {assetName}
+                        <span className="ml-2 text-[10px] text-muted-foreground">
+                          {run.scanner}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -200,7 +204,9 @@ export default async function ScansPage() {
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {run.tools.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-xs text-muted-foreground">
+                              —
+                            </span>
                           ) : (
                             run.tools.map((tool) => (
                               <Badge

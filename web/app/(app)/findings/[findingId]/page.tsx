@@ -8,10 +8,7 @@ import {
   PackageIcon,
 } from "@phosphor-icons/react/dist/ssr"
 
-import {
-  FindingStatusBadge,
-  SeverityBadge,
-} from "@/components/findings/badges"
+import { FindingStatusBadge, SeverityBadge } from "@/components/findings/badges"
 import { FindingStatusForm } from "@/components/findings/status-form"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
@@ -40,14 +37,22 @@ export default async function FindingDetailPage({
   const detail = await getFinding(workspace.id, findingId)
   if (!detail) notFound()
 
-  const { finding, assetName, projectName, projectId, evidence, events } = detail
+  const {
+    finding,
+    assetName,
+    projectName,
+    projectId,
+    evidence,
+    scanRun,
+    events,
+  } = detail
 
   return (
     <>
       <Button
         variant="ghost"
         size="sm"
-        className="-ml-2 mb-4"
+        className="mb-4 -ml-2"
         render={<Link href="/findings" />}
       >
         <ArrowLeftIcon />
@@ -83,7 +88,8 @@ export default async function FindingDetailPage({
           </Badge>
         ) : null}
         <span className="font-mono text-[11px] text-muted-foreground">
-          seen {finding.occurrenceCount}× · last {formatRelativeTime(finding.lastSeenAt)}
+          seen {finding.occurrenceCount}× · last{" "}
+          {formatRelativeTime(finding.lastSeenAt)}
         </span>
       </div>
 
@@ -230,6 +236,51 @@ export default async function FindingDetailPage({
               </div>
             </CardContent>
           </Card>
+
+          {scanRun ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Provenance</CardTitle>
+                <CardDescription>
+                  Latest scan run that observed this finding.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="gap-2.5 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Scanner</span>
+                  <span className="font-mono text-xs">{scanRun.scanner}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Run status</span>
+                  <span className="font-mono text-xs">{scanRun.status}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Started</span>
+                  <span className="font-mono text-xs">
+                    {formatDateTime(scanRun.startedAt)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Findings</span>
+                  <span className="font-mono text-xs">
+                    {scanRun.findingCount}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-muted-foreground">Target snapshot</span>
+                  <span className="font-mono text-[10px] break-all text-muted-foreground">
+                    {JSON.stringify(scanRun.targetSnapshot)}
+                  </span>
+                </div>
+                <Link
+                  href="/scans"
+                  className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  Scan history
+                </Link>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>

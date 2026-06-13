@@ -2,11 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import {
-  ArrowClockwiseIcon,
-  CopyIcon,
-  PlusIcon,
-} from "@phosphor-icons/react"
+import { ArrowClockwiseIcon, CopyIcon, PlusIcon } from "@phosphor-icons/react"
 import { toast } from "sonner"
 
 import {
@@ -129,8 +125,15 @@ export function WorkerManager({
           APIs. Only a SHA-256 hash is stored.
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshing}>
-            <ArrowClockwiseIcon className={refreshing ? "animate-spin" : undefined} />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refresh}
+            disabled={refreshing}
+          >
+            <ArrowClockwiseIcon
+              className={refreshing ? "animate-spin" : undefined}
+            />
             Refresh
           </Button>
           <Button size="sm" disabled={!canManage} onClick={() => setOpen(true)}>
@@ -167,8 +170,8 @@ export function WorkerManager({
 
       {workers.length === 0 ? (
         <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-          No worker tokens yet. Create one, then run the Python service with this
-          token to see it come online.
+          No worker tokens yet. Create one, then run the Python service with
+          this token to see it come online.
         </p>
       ) : (
         <div className="rounded-lg border border-border">
@@ -188,7 +191,8 @@ export function WorkerManager({
                   <TableCell>
                     <p className="font-medium">{worker.name}</p>
                     <p className="font-mono text-[11px] text-muted-foreground">
-                      {worker.tokenPrefix}… · {worker.scopes.join(", ") || "no scopes"}
+                      {worker.tokenPrefix}… ·{" "}
+                      {worker.scopes.join(", ") || "no scopes"}
                     </p>
                   </TableCell>
                   <TableCell>
@@ -211,14 +215,18 @@ export function WorkerManager({
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {worker.hostname ?? "—"}
-                    <span className="block text-[10px]">{worker.version ?? ""}</span>
+                    <span className="block text-[10px]">
+                      {worker.version ?? ""}
+                    </span>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {worker.lastSeenAt ? formatDateTime(worker.lastSeenAt) : "never"}
+                    {worker.lastSeenAt
+                      ? formatDateTime(worker.lastSeenAt)
+                      : "never"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
-                      variant="ghost"
+                      variant="destructive"
                       size="xs"
                       disabled={
                         !canManage ||
@@ -243,8 +251,8 @@ export function WorkerManager({
           <DialogHeader>
             <DialogTitle>Create a worker token</DialogTitle>
             <DialogDescription>
-              The token is displayed once. The workspace is bound server-side and
-              the token can be revoked at any time.
+              The token is displayed once. The workspace is bound server-side
+              and the token can be revoked at any time.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={createToken} noValidate>

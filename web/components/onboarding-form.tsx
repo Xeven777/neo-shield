@@ -16,7 +16,10 @@ import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 
 export function WorkspaceOnboardingForm() {
-  const [state, action, pending] = useActionState(createWorkspaceAction, undefined)
+  const [state, action, pending] = useActionState(
+    createWorkspaceAction,
+    undefined
+  )
 
   return (
     <form action={action} noValidate>

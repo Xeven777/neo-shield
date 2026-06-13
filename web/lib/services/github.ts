@@ -46,10 +46,7 @@ export async function getGithubConnection(
   return { installation: installation ?? null, repositories }
 }
 
-async function syncRepositoryRows(
-  workspaceId: string,
-  installationId: string
-) {
+async function syncRepositoryRows(workspaceId: string, installationId: string) {
   const db = getDb()
   const repositories = (
     await listInstallationRepositories(installationId)
@@ -89,17 +86,15 @@ async function syncRepositoryRows(
       .delete(githubRepository)
       .where(eq(githubRepository.workspaceId, workspaceId))
   } else {
-    await db
-      .delete(githubRepository)
-      .where(
-        and(
-          eq(githubRepository.workspaceId, workspaceId),
-          notInArray(
-            githubRepository.githubId,
-            repositories.map((repository) => repository.githubId)
-          )
+    await db.delete(githubRepository).where(
+      and(
+        eq(githubRepository.workspaceId, workspaceId),
+        notInArray(
+          githubRepository.githubId,
+          repositories.map((repository) => repository.githubId)
         )
       )
+    )
   }
 
   return repositories.length
@@ -112,9 +107,7 @@ export async function connectGithubInstallation(input: {
   installationId: string
 }) {
   if (!canManageWorkspace(input.role)) {
-    throw new AuthorizationError(
-      "Only workspace admins can connect GitHub."
-    )
+    throw new AuthorizationError("Only workspace admins can connect GitHub.")
   }
 
   const installation = await fetchInstallation(input.installationId)
@@ -359,9 +352,7 @@ export async function disconnectGithub(input: {
   role: WorkspaceRole
 }) {
   if (!canManageWorkspace(input.role)) {
-    throw new AuthorizationError(
-      "Only workspace admins can disconnect GitHub."
-    )
+    throw new AuthorizationError("Only workspace admins can disconnect GitHub.")
   }
 
   const db = getDb()

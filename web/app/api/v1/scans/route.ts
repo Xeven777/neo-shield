@@ -1,5 +1,9 @@
 import { json, readJson, withApiContext } from "@/lib/api/http"
-import { listScanJobs, listScanRuns, queueRepositoryScan } from "@/lib/services/scans"
+import {
+  listScanJobs,
+  listScanRuns,
+  queueAssetScan,
+} from "@/lib/services/scans"
 import { queueScanSchema } from "@/lib/validation/schemas"
 
 export const dynamic = "force-dynamic"
@@ -17,7 +21,7 @@ export async function GET() {
 export async function POST(request: Request) {
   return withApiContext(async ({ workspaceId, userId, role }) => {
     const body = queueScanSchema.parse(await readJson(request))
-    const result = await queueRepositoryScan({
+    const result = await queueAssetScan({
       workspaceId,
       assetId: body.assetId,
       actorUserId: userId,

@@ -1,6 +1,9 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowRightIcon, FolderSimpleIcon } from "@phosphor-icons/react/dist/ssr"
+import {
+  ArrowRightIcon,
+  FolderSimpleIcon,
+} from "@phosphor-icons/react/dist/ssr"
 
 import { PageHeader } from "@/components/page-header"
 import { ProjectDialog } from "@/components/projects/project-dialog"
@@ -21,7 +24,8 @@ export const metadata: Metadata = { title: "Projects" }
 
 const criticalityStyles: Record<string, string> = {
   high: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  medium: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  medium:
+    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
   low: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
 }
 
@@ -45,8 +49,8 @@ export default async function ProjectsPage() {
             </EmptyMedia>
             <EmptyTitle>No projects yet</EmptyTitle>
             <EmptyDescription>
-              Create your first project, then attach a GitHub repository or a
-              domain in Phase 1.
+              Create your first project, then attach a GitHub repository or add
+              a domain.
             </EmptyDescription>
           </EmptyHeader>
           <ProjectDialog mode="create" />
@@ -73,7 +77,10 @@ export default async function ProjectsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="secondary" className="font-mono text-[10px]">
+                    <Badge
+                      variant="secondary"
+                      className="font-mono text-[10px]"
+                    >
                       {project.environment}
                     </Badge>
                     <Badge

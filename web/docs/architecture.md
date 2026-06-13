@@ -76,11 +76,11 @@ to write Better Auth tables.
 
 No Redis, Kafka or external broker is used.
 
-## Phase 1: repository scanning (implemented)
+## Phase 1: repository and domain scanning (implemented)
 
-Scope for this slice is GitHub repositories only. Domain checks (DNS, TLS,
-redirects, headers) remain a separate follow-up even though the spec lists them
-under Phase 1.
+Two asset types are scannable: GitHub repositories (Gitleaks, OSV-Scanner,
+Trivy) and domains (DNS, TLS, redirects, security headers). Both write into the
+same normalized finding model and scan history.
 
 ### GitHub access
 
@@ -97,6 +97,24 @@ under Phase 1.
   (`/api/auth/callback/github`) when `GITHUB_APP_CLIENT_ID`/`GITHUB_APP_CLIENT_SECRET`
   are set; it grants no repository permission and is independent of App
   installation access.
+
+### Domain checks
+
+- A domain is an `asset` row of type `domain` with identifier `domain:<host>`
+  and config `{ provider: "domain", domain, url }`. It is attached to a project
+  from Integrations; no provider credential is required.
+- The worker only reads public DNS and HTTPS. It resolves the target first and
+  refuses private, loopback, link-local, reserved and shared addresses, then
+  repeats that check for every redirect hop. TLS connects to the validated
+  address with SNI, so a second DNS answer cannot move the connection.
+- DNS: A/AAAA, NS, MX, TXT, SPF, DMARC and CAA. TLS: certificate validation,
+  expiry, protocol and cipher. HTTP: HTTPS availability, HTTP→HTTPS redirect
+  behaviour and security headers.
+- Stable keys are deterministic per check (`domain|dns|…`, `domain|tls|…`,
+  `domain|http|…`, `domain|header|…`), so fixed issues resolve on a later
+  successful run and regressions re-open the finding.
+- A domain run is recorded with `scan_run.scanner = 'domain'` and tool summaries
+  `dns`, `tls` and `http`, which the Scans page and finding provenance display.
 
 ### Worker data path
 
@@ -138,6 +156,78 @@ transactional and keyed by `(asset_id, stable_key)`.
   rejects traversal, links and devices, and bounds total size. Repository code is
   never executed; scanners only read files. Trivy's vulnerability DB is
   downloaded on its first run (needs network and may exceed one timeout).
+
+## Phase 2: endpoints and networks (implemented)
+
+### Wazuh endpoint path
+
+- A Wazuh integration is one `integration` row per workspace
+  (`provider = 'wazuh'`, `project_id`, `status`, `metadata.minLevel`,
+  `sync_cursor`, `last_synced_at`, `last_error`). The UI sets the project and
+  minimum rule level; indexer/manager URLs and credentials stay in the Python
+  worker environment and are never sent to the browser or stored in the DB.
+- `endpoint` assets are auto-provisioned by the worker from agents
+  (identifier `wazuh:<agentId>`, config keys `provider`, `agentId`, `agentName`,
+  `hostname`, `ipAddress`, OS fields). A matching `endpoint_agent` row keeps the
+  current status, last-seen time and inventory for the asset detail page.
+- Every ingested alert above the threshold becomes a redacted `security_event`
+  keyed by `(workspace_id, source_tool, external_id)`, so re-polling the same
+  Wazuh document is idempotent. Findings use deterministic keys such as
+  `wazuh|auth|<agent>|<rule>|<srcip>|<user>` and
+  `wazuh|fim|<agent>|<event>|<path>`; the event links to its finding.
+- Categories that become findings: authentication, file integrity, malware,
+  vulnerability, agent health, configuration and audit. Other alerts remain
+  events only. `full_log` and raw payloads are never stored; evidence is an
+  allowlist of bounded fields.
+- The worker polls continuously while the integration is `pending`, `connected`
+  or `error` (and its environment has credentials). It advances `sync_cursor`
+  only after a successful batch. `disconnected` stops polling but keeps all
+  history. Endpoint jobs run the same path on demand for one agent.
+- Agent inventory is optional: the manager API (`/security/user/authenticate`,
+  `/agents`) supplies status/OS data, while alerts always come from the indexer
+  (`wazuh-alerts-*`, `rule.level`, `agent.id`).
+
+### Authorized Nmap discovery
+
+- A network asset stores an exact authorized scope in `asset.config`:
+  `{ provider: "network", cidr, scanProfile, authorization: {
+  confirmedByUserId, confirmedAt, statement, scope } }`. The UI requires an
+  explicit authorization checkbox and typing the normalized CIDR; both the web
+  queue path and the worker re-validate it.
+- Allowed scope is IPv4 RFC1918/CGNAT only (`10/8`, `172.16/12`, `192.168/16`,
+  `100.64/10`), prefix `24`–`32`, at most 256 addresses. `network_allow_public`
+  stays false and has no UI override.
+- Two fixed profiles: `discovery` (`-sn -PE -PS22,80,443`, no service scan) and
+  `services` (discovery plus `-sV --version-light` on the explicit
+  `NEOSHIELD_NETWORK_PORTS` list, capped at 64 hosts). No NSE, OS detection,
+  brute force, exploitation or aggressive timing; Nmap runs as an argv list
+  with a timeout and output cap.
+- `network_host` is unique per `(asset_id, address)` and `network_service` per
+  `(host_id, port, protocol)`. Each scan upserts active observations, marks
+  absent ones `missing`, and records a `scan_run` with the CIDR, profile, ports
+  and Nmap version.
+- Findings: one informational `network|host|<address>` finding per discovered
+  host, plus `network|port|<address>|<port>|<protocol>` findings for risky
+  services (SSH, RDP, Telnet, SMB, databases, Redis, Docker API, etc.).
+  Host findings resolve when a later run no longer sees the host; service
+  findings resolve only after a **complete** service-profile run, so a
+  discovery-only scan never silently clears service risk.
+
+### Worker permissions
+
+`deploy/sql/worker-grants.sql` adds `SELECT/UPDATE` on `integration`,
+`INSERT/UPDATE` on `asset` (auto-provisioned endpoints), and
+`SELECT/INSERT/UPDATE` on `endpoint_agent`, `security_event`, `network_host`
+and `network_service`. The worker still cannot write Better Auth tables or
+delete assets/findings; those remain web-app actions.
+
+### Exposure
+
+Wazuh is deployed from `deploy/lab/wazuh/` at a pinned upstream tag, with every
+published port (`1514`, `1515`, `55000`, `9200`, `443`, `514/udp`) bound to
+`127.0.0.1`. `verify-exposure.sh` fails if any listener is public. The Nmap
+helper in `deploy/compose.lab.yaml` is a one-shot, opt-in container; the
+long-running worker is never switched to host networking.
 
 ## Failures and freshness
 

@@ -7,4 +7,3 @@ tests
 .env.*
 !.env.example
 .git
-README.md

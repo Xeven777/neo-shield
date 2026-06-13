@@ -3,26 +3,29 @@ import Link from "next/link"
 import {
   ArrowRightIcon,
   CloudIcon,
-  DesktopIcon,
   HardDrivesIcon,
 } from "@phosphor-icons/react/dist/ssr"
 
+import { DomainPanel } from "@/components/integrations/domain-panel"
 import { GithubPanel } from "@/components/integrations/github-panel"
+import { NetworkPanel } from "@/components/integrations/network-panel"
+import { WazuhPanel } from "@/components/integrations/wazuh-panel"
 import { PageHeader } from "@/components/page-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { canManageWorkspace, requireWorkspace } from "@/lib/auth/session"
 import { isGithubAppConfigured } from "@/lib/env"
 import { formatRelativeTime } from "@/lib/format"
+import { listDomainAssets } from "@/lib/services/domains"
 import { getGithubConnection } from "@/lib/services/github"
+import {
+  listNetworkAssets,
+  networkConfigIsScanReady,
+} from "@/lib/services/network"
 import { listProjects } from "@/lib/services/projects"
+import { getWazuhOverview } from "@/lib/services/wazuh"
 import { isWorkerOnline, listWorkers } from "@/lib/services/workers"
 
 export const metadata: Metadata = { title: "Integrations" }
@@ -84,18 +87,29 @@ export default async function IntegrationsPage({
 }) {
   const params = await searchParams
   const githubStatus =
-    typeof params.github === "string" ? githubStatuses[params.github] : undefined
+    typeof params.github === "string"
+      ? githubStatuses[params.github]
+      : undefined
 
   const { workspace, role } = await requireWorkspace()
-  const [workers, github, projects] = await Promise.all([
-    listWorkers(workspace.id),
-    getGithubConnection(workspace.id),
-    listProjects(workspace.id),
-  ])
+  const [workers, github, projects, domains, wazuh, networks] = await Promise.all(
+    [
+      listWorkers(workspace.id),
+      getGithubConnection(workspace.id),
+      listProjects(workspace.id),
+      listDomainAssets(workspace.id),
+      getWazuhOverview(workspace.id),
+      listNetworkAssets(workspace.id),
+    ]
+  )
 
   const activeWorkers = workers.filter((worker) => worker.status === "active")
   const online = activeWorkers.filter((worker) => isWorkerOnline(worker))
   const manage = canManageWorkspace(role)
+
+  const wazuhMetadata = wazuh.integration?.metadata ?? {}
+  const wazuhMinLevel =
+    typeof wazuhMetadata.minLevel === "number" ? wazuhMetadata.minLevel : null
 
   return (
     <>
@@ -121,6 +135,74 @@ export default async function IntegrationsPage({
         configured={isGithubAppConfigured()}
       />
 
+      <DomainPanel
+        domains={domains.map((row) => ({
+          assetId: row.asset.id,
+          domain: row.asset.displayName,
+          projectId: row.projectId,
+          projectName: row.projectName,
+          enabled: row.asset.enabled,
+        }))}
+        projects={projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+        }))}
+        canManage={manage}
+      />
+
+      <WazuhPanel
+        overview={{
+          status: wazuh.integration?.status ?? null,
+          minLevel: wazuhMinLevel,
+          projectId: wazuh.integration?.projectId ?? null,
+          lastSyncedAt: wazuh.integration?.lastSyncedAt ?? null,
+          syncCursor: wazuh.integration?.syncCursor ?? null,
+          lastError: wazuh.integration?.lastError ?? null,
+          endpointCount: wazuh.endpointCount,
+          events24h: wazuh.events24h,
+          events7d: wazuh.events7d,
+          openFindings: wazuh.openFindings,
+          lastEventAt: wazuh.lastEventAt,
+        }}
+        projects={projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+        }))}
+        canManage={manage}
+      />
+
+      <NetworkPanel
+        networks={networks.map((row) => {
+          const config = row.asset.config as {
+            scanProfile?: unknown
+            authorization?: { confirmedAt?: unknown }
+          }
+          const confirmedAt = config.authorization?.confirmedAt
+
+          return {
+            assetId: row.asset.id,
+            cidr: row.asset.displayName,
+            scanProfile:
+              typeof config.scanProfile === "string"
+                ? config.scanProfile
+                : "services",
+            enabled: row.asset.enabled,
+            projectId: row.projectId,
+            projectName: row.projectName,
+            hostCount: row.hostCount,
+            activeHostCount: row.activeHostCount,
+            activeServiceCount: row.activeServiceCount,
+            confirmedAt: typeof confirmedAt === "string" ? confirmedAt : null,
+            scanReady: networkConfigIsScanReady(row.asset.config),
+          }
+        })}
+        projects={projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+        }))}
+        canManage={manage}
+      />
+
       <Card className="mt-4">
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
@@ -140,11 +222,18 @@ export default async function IntegrationsPage({
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               Long-running FastAPI service that claims jobs and runs Gitleaks,
-              OSV-Scanner and Trivy. Heartbeats every 30 seconds; online means
-              seen in the last 90 seconds.
+              OSV-Scanner and Trivy for repositories, DNS/TLS/HTTP checks for
+              domains, Wazuh alert syncs for endpoints and authorized Nmap
+              discovery for network ranges. Heartbeats every 30 seconds; online
+              means seen in the last 90 seconds.
             </p>
           </div>
-          <Button variant="outline" size="sm" render={<Link href="/settings" />}>
+          <Button
+            variant="outline"
+            nativeButton={false}
+            size="sm"
+            render={<Link href="/settings" />}
+          >
             Manage tokens
             <ArrowRightIcon data-icon="inline-end" />
           </Button>
@@ -193,46 +282,28 @@ export default async function IntegrationsPage({
         </CardContent>
       </Card>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {[
-          {
-            name: "Wazuh",
-            phase: "Phase 2",
-            icon: DesktopIcon,
-            detail:
-              "Endpoint alerts normalized from the Wazuh manager or indexer API. Management ports stay private.",
-          },
-          {
-            name: "AWS",
-            phase: "Phase 4",
-            icon: CloudIcon,
-            detail:
-              "Read-only IAM, S3, security group and CloudTrail checks using the worker's local credential chain.",
-          },
-        ].map((provider) => (
-          <Card key={provider.name} size="sm">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <provider.icon className="size-5 text-muted-foreground" />
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    {provider.phase}
-                  </Badge>
-                  <Badge variant="secondary" className="font-mono text-[10px]">
-                    not connected
-                  </Badge>
-                </div>
-              </div>
-              <CardTitle className="mt-3">{provider.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {provider.detail}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <Card className="mt-4" size="sm">
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <CloudIcon className="size-5 text-muted-foreground" />
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className="font-mono text-[10px]">
+                Phase 4
+              </Badge>
+              <Badge variant="secondary" className="font-mono text-[10px]">
+                not connected
+              </Badge>
+            </div>
+          </div>
+          <CardTitle className="mt-3">AWS</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Read-only IAM, S3, security group and CloudTrail checks using the
+            worker&apos;s local credential chain. Not part of Phase 2.
+          </p>
+        </CardContent>
+      </Card>
     </>
   )
 }

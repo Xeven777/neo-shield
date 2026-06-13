@@ -1,24 +1,18 @@
 # syntax=docker/dockerfile:1
 
 # ---- dependencies -----------------------------------------------------------
-FROM node:24-bookworm-slim AS deps
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
-RUN corepack enable && corepack prepare pnpm@12.18.0 --activate
+FROM oven/bun:1.4.4-bookworm-slim AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 # ---- build ------------------------------------------------------------------
-FROM node:24-bookworm-slim AS build
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
+FROM oven/bun:1.4.4-bookworm-slim AS build
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable && corepack prepare pnpm@12.18.0 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN pnpm build
+RUN bun run build
 
 # ---- runtime ----------------------------------------------------------------
 FROM node:24-bookworm-slim AS runner

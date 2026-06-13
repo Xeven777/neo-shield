@@ -17,8 +17,10 @@ from neoshield.worker.client import (
     WorkerRequestError,
 )
 from neoshield.worker.jobs import JobRunner
+from neoshield.worker.network_scan import NetworkScanError, nmap_binary
 from neoshield.worker.runner import HeartbeatRunner, WorkerState, hostname
 from neoshield.worker.scanners import ScannerBinaries
+from neoshield.worker.wazuh_poller import WazuhPoller
 
 settings = get_settings()
 
@@ -48,6 +50,13 @@ def installed_scanners() -> list[str]:
         for name, path in scanners["binaries"].items()
         if path is not None
     ]
+
+
+def nmap_path() -> str | None:
+    try:
+        return nmap_binary(settings)
+    except NetworkScanError:
+        return None
 
 
 @asynccontextmanager
@@ -119,6 +128,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     elif store is not None:
         logger.warning("job claiming disabled until a worker token is configured")
 
+    if store is not None and settings.wazuh_configured:
+        poller = WazuhPoller(
+            settings=settings, store=store, state=runner.state
+        )
+        tasks.append(asyncio.create_task(poller.run_forever(stop)))
+        logger.info("Wazuh alert polling enabled")
+    elif settings.wazuh_enabled:
+        logger.warning(
+            "NEOSHIELD_WAZUH_ENABLED is set but the indexer URL or credentials "
+            "are missing: Wazuh polling is disabled"
+        )
+
     try:
         yield
     finally:
@@ -151,7 +172,21 @@ async def health() -> dict[str, object]:
         "worker": worker,
         "capabilities": {
             "heartbeat": True,
+            "domainChecks": True,
             "scanners": installed_scanners(),
+            "nmap": nmap_path(),
+            "networkDiscovery": nmap_path() is not None,
+            "wazuh": {
+                "enabled": settings.wazuh_enabled,
+                "configured": settings.wazuh_configured,
+                "managerConfigured": settings.wazuh_manager_configured,
+                "lastSyncAt": (
+                    runner.state.wazuh_last_sync_at.isoformat()
+                    if runner.state.wazuh_last_sync_at
+                    else None
+                ),
+                "lastError": runner.state.wazuh_last_error,
+            },
             "jobClaiming": bool(
                 store is not None
                 and job_runner is not None

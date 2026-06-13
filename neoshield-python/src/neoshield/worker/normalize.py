@@ -35,6 +35,7 @@ class Finding:
     description: str
     category: str
     severity: Severity
+    source: Literal["github", "domain", "wazuh", "network", "aws"] = "github"
     confidence: Confidence | None = None
     cve_id: str | None = None
     cvss_score: float | None = None
@@ -83,22 +84,43 @@ def _dedupe(values: list[str]) -> list[str]:
     return result[:MAX_REFERENCES]
 
 
-def safe_evidence(value: dict[str, Any]) -> dict[str, Any]:
+def _safe_value(item: Any, depth: int) -> object:
+    if isinstance(item, str):
+        return clip(item, MAX_EVIDENCE_STRING)
+    if isinstance(item, (int, float, bool)) or item is None:
+        return item
+    if isinstance(item, dict) and depth > 0:
+        return safe_evidence(item, depth=depth - 1)
+    if isinstance(item, list):
+        result: list[object] = []
+        for entry in item[:10]:
+            if isinstance(entry, str):
+                result.append(clip(entry, MAX_EVIDENCE_STRING))
+            elif isinstance(entry, (int, float, bool)) or entry is None:
+                result.append(entry)
+            elif isinstance(entry, dict) and depth > 0:
+                result.append(safe_evidence(entry, depth=depth - 1))
+        return result
+    return None
+
+
+def safe_evidence(value: dict[str, Any], *, depth: int = 2) -> dict[str, Any]:
     """Bound and clip evidence objects so a report cannot bloat the database."""
     result: dict[str, Any] = {}
     for key, item in list(value.items())[:20]:
-        if key.lower() in {"secret", "match", "raw", "token", "password"}:
+        if key.lower() in {
+            "secret",
+            "match",
+            "raw",
+            "token",
+            "password",
+            "full_log",
+            "fullLog",
+        }:
             continue
-        if isinstance(item, str):
-            result[key] = clip(item, MAX_EVIDENCE_STRING)
-        elif isinstance(item, (int, float, bool)) or item is None:
-            result[key] = item
-        elif isinstance(item, list):
-            result[key] = [
-                clip(entry, MAX_EVIDENCE_STRING)
-                for entry in item[:10]
-                if isinstance(entry, (str, int, float))
-            ]
+        cleaned = _safe_value(item, depth)
+        if cleaned is not None:
+            result[key] = cleaned
     return result
 
 

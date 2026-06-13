@@ -11,24 +11,32 @@ import {
   type ScanJob,
   type ScanRun,
 } from "@/lib/db/schema"
-import {
-  AuthorizationError,
-  canManageWorkspace,
-} from "@/lib/auth/session"
+import { AuthorizationError, canManageWorkspace } from "@/lib/auth/session"
 import { isGithubAppConfigured } from "@/lib/env"
 import { recordAudit } from "@/lib/services/audit"
+import { networkConfigIsScanReady } from "@/lib/services/network"
+import { parseNetworkScope } from "@/lib/validation/network"
 import type { WorkspaceRole } from "@/lib/db/schema"
+
+const SCANNABLE_ASSET_TYPES = [
+  "repository",
+  "domain",
+  "endpoint",
+  "network",
+] as const
 
 const ACTIVE_SCAN_STATUSES = ["queued", "leased", "running"] as const
 const MAX_ACTIVE_JOBS_PER_WORKSPACE = 25
 
 export class ScanRequestError extends Error {
-  code: "not_found" | "unsupported" | "disabled" | "integration_missing" | "queue_full"
+  code:
+    | "not_found"
+    | "unsupported"
+    | "disabled"
+    | "integration_missing"
+    | "queue_full"
 
-  constructor(
-    message: string,
-    code: ScanRequestError["code"]
-  ) {
+  constructor(message: string, code: ScanRequestError["code"]) {
     super(message)
     this.name = "ScanRequestError"
     this.code = code
@@ -50,7 +58,7 @@ export async function getWorkspaceAsset(workspaceId: string, assetId: string) {
   return row ?? null
 }
 
-export async function queueRepositoryScan(input: {
+export async function queueAssetScan(input: {
   workspaceId: string
   assetId: string
   actorUserId: string
@@ -62,12 +70,19 @@ export async function queueRepositoryScan(input: {
 
   const target = await getWorkspaceAsset(input.workspaceId, input.assetId)
   if (!target) {
-    throw new ScanRequestError("Asset not found in this workspace.", "not_found")
+    throw new ScanRequestError(
+      "Asset not found in this workspace.",
+      "not_found"
+    )
   }
 
-  if (target.asset.type !== "repository") {
+  if (
+    !SCANNABLE_ASSET_TYPES.includes(
+      target.asset.type as (typeof SCANNABLE_ASSET_TYPES)[number]
+    )
+  ) {
     throw new ScanRequestError(
-      "Only repository assets can be scanned in Phase 1.",
+      "This asset type cannot be scanned yet.",
       "unsupported"
     )
   }
@@ -76,21 +91,64 @@ export async function queueRepositoryScan(input: {
     throw new ScanRequestError("Enable the asset before scanning.", "disabled")
   }
 
-  const config = target.asset.config as { fullName?: unknown }
-  if (typeof config.fullName !== "string" || !config.fullName) {
-    throw new ScanRequestError(
-      "Asset is missing its GitHub repository metadata.",
-      "integration_missing"
-    )
+  if (target.asset.type === "repository") {
+    const config = target.asset.config as { fullName?: unknown }
+    if (typeof config.fullName !== "string" || !config.fullName) {
+      throw new ScanRequestError(
+        "Asset is missing its GitHub repository metadata.",
+        "integration_missing"
+      )
+    }
+
+    if (!isGithubAppConfigured()) {
+      throw new ScanRequestError(
+        "GitHub App credentials are not configured on this deployment.",
+        "integration_missing"
+      )
+    }
+  } else if (target.asset.type === "domain") {
+    const config = target.asset.config as { domain?: unknown }
+    if (typeof config.domain !== "string" || !config.domain) {
+      throw new ScanRequestError(
+        "Asset is missing its domain name.",
+        "integration_missing"
+      )
+    }
+  } else if (target.asset.type === "endpoint") {
+    const config = target.asset.config as { agentId?: unknown }
+    const identifierAgent = target.asset.identifier.startsWith("wazuh:")
+    if (
+      (typeof config.agentId !== "string" || !config.agentId) &&
+      !identifierAgent
+    ) {
+      throw new ScanRequestError(
+        "Endpoint is missing its Wazuh agent id. Wait for the worker's next agent sync.",
+        "integration_missing"
+      )
+    }
+  } else {
+    const config = target.asset.config
+    if (!networkConfigIsScanReady(config)) {
+      throw new ScanRequestError(
+        "Authorized network scope is missing or no longer matches the confirmed CIDR. Re-add the range in Integrations.",
+        "integration_missing"
+      )
+    }
+
+    const network = config as { cidr: string }
+    try {
+      if (parseNetworkScope(network.cidr).cidr !== network.cidr) {
+        throw new Error("Scope is not normalized.")
+      }
+    } catch {
+      throw new ScanRequestError(
+        "Authorized network scope is not a valid private CIDR range.",
+        "integration_missing"
+      )
+    }
   }
 
-  if (!isGithubAppConfigured()) {
-    throw new ScanRequestError(
-      "GitHub App credentials are not configured on this deployment.",
-      "integration_missing"
-    )
-  }
-
+  const scanType = target.asset.type as (typeof SCANNABLE_ASSET_TYPES)[number]
   const db = getDb()
 
   const [active] = await db
@@ -125,7 +183,7 @@ export async function queueRepositoryScan(input: {
 
   // Time-bucketed idempotency: double clicks and retries within a minute cannot
   // enqueue duplicate work, while a new minute allows a fresh scan.
-  const idempotencyKey = `repository:${input.assetId}:${Math.floor(
+  const idempotencyKey = `${scanType}:${input.assetId}:${Math.floor(
     Date.now() / 60_000
   )}`
 
@@ -134,7 +192,7 @@ export async function queueRepositoryScan(input: {
     .values({
       workspaceId: input.workspaceId,
       assetId: input.assetId,
-      type: "repository",
+      type: scanType,
       idempotencyKey,
       parameters: { requestedAt: new Date().toISOString() },
       createdByUserId: input.actorUserId,

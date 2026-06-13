@@ -73,6 +73,7 @@ export function GithubPanel({
           <Button
             size="sm"
             disabled={!canManage}
+            nativeButton={false}
             render={<a href="/api/integrations/github/install" />}
           >
             <ArrowSquareOutIcon />

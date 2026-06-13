@@ -24,4 +24,3 @@ export function getDb(): Database {
   cached ??= createDb()
   return cached
 }
-

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+*.pem
 
 # python
 .venv/
@@ -9,3 +10,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pyc
+
+# local Wazuh lab: upstream clone created by deploy/lab/wazuh/setup.sh
+deploy/lab/wazuh/wazuh-docker/

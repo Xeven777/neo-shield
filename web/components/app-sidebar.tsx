@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+  ClockCounterClockwiseIcon,
   FileTextIcon,
   FolderSimpleIcon,
   GearSixIcon,
@@ -43,6 +44,11 @@ const navigation = [
     label: "Security",
     items: [
       { title: "Findings", href: "/findings", icon: ShieldWarningIcon },
+      {
+        title: "Events",
+        href: "/events",
+        icon: ClockCounterClockwiseIcon,
+      },
       { title: "Incidents", href: "/incidents", icon: SirenIcon },
       { title: "Reports", href: "/reports", icon: FileTextIcon },
     ],

@@ -27,7 +27,10 @@ const serverEnvSchema = z.object({
   AUTH_EMAIL_LOG_CODES: z.preprocess(emptyToUndefined, z.string().optional()),
 
   // GitHub App (Phase 1). Optional so the rest of the platform keeps working.
-  GITHUB_APP_ID: z.string().regex(/^\d+$/, "GITHUB_APP_ID must be numeric").optional(),
+  GITHUB_APP_ID: z
+    .string()
+    .regex(/^\d+$/, "GITHUB_APP_ID must be numeric")
+    .optional(),
   GITHUB_APP_SLUG: z.string().optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().optional(),
   GITHUB_APP_CLIENT_ID: z.string().optional(),
@@ -93,8 +96,8 @@ export function isGithubAuthEnabled() {
 export function isGithubAppConfigured() {
   return Boolean(
     process.env.GITHUB_APP_ID &&
-      process.env.GITHUB_APP_SLUG &&
-      process.env.GITHUB_APP_PRIVATE_KEY
+    process.env.GITHUB_APP_SLUG &&
+    process.env.GITHUB_APP_PRIVATE_KEY
   )
 }
 
