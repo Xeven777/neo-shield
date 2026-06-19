@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
 # ---- dependencies -----------------------------------------------------------
-FROM oven/bun:1.4.4-bookworm-slim AS deps
+FROM oven/bun:1.4.4-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # ---- build ------------------------------------------------------------------
-FROM oven/bun:1.4.4-bookworm-slim AS build
+FROM oven/bun:1.4.4-alpine AS build
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

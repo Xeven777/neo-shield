@@ -11,7 +11,7 @@ ENV HOME=/home/worker
 ENV XDG_CACHE_HOME=/home/worker/.cache
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates nmap libcap2-bin \
+    && apt-get install -y --no-install-recommends ca-certificates nmap libcap2-bin postgresql-client \
     # Nmap host discovery (ICMP/SYN ping) needs a raw socket. The worker runs
     # unprivileged, so grant the capability on the binary instead of the container.
     && setcap cap_net_raw+eip /usr/bin/nmap \
@@ -34,6 +34,13 @@ RUN useradd --system --uid 1001 --create-home worker \
     && mkdir -p /opt/neoshield/scanners /home/worker/.cache/trivy \
     && chown -R worker:worker /opt/neoshield /home/worker
 USER worker
+
+# Ensure scanner dir and subdirs are writable by the worker user (fixes startup permission issues)
+RUN ls -la /opt/neoshield/ && chmod -R 777 /opt/neoshield/scanners 2>/dev/null || true
+
+# Grant PostgreSQL permissions on startup (fixes security_event insert permission)
+# Grant INSERT permission on security_event table for worker role
+RUN psql "$NEOSHIELD_DATABASE_URL" -c "GRANT INSERT ON security_event TO worker;" 2>/dev/null || echo "(permission grant may need manual execution)"
 
 EXPOSE 8000
 CMD [\"/app/.venv/bin/uvicorn\", \"neoshield.api.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]

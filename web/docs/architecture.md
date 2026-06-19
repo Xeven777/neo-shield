@@ -229,10 +229,49 @@ published port (`1514`, `1515`, `55000`, `9200`, `443`, `514/udp`) bound to
 helper in `deploy/compose.lab.yaml` is a one-shot, opt-in container; the
 long-running worker is never switched to host networking.
 
+## Phase 3: security intelligence (implemented through 3.2)
+
+### Deterministic health scores
+
+- `lib/intelligence/score.ts` is pure: callers pass open findings, the same input
+  always produces the same score. Version `score.v1` is stored with every
+  snapshot.
+- Base points: critical 25, high 15, medium 8, low 3, informational 0. Exposure
+  multipliers: internet (domain) ×1.25, cloud (AWS account) ×1.1, internal
+  (endpoint/network) ×1.0, source (repository) ×0.85. Project criticality:
+  high ×1.2, medium ×1.0, low ×0.85.
+- Only `open`, `acknowledged` and `in_progress` findings count.
+  `health = 100 − min(100, risk points)`. Deduplication comes from the
+  `(asset_id, stable_key)` unique key, so repeated scans never inflate risk.
+- `score_snapshot` stores workspace and project history. The web app writes a
+  snapshot when the score or open-finding count changes, and otherwise at most
+  once per 24 hours. Trends read these snapshots.
+- The UI shows “not scanned” until a completed/partial `scan_run` exists; it
+  never presents a score as compliance certification.
+
+### Deterministic incident correlation
+
+- `lib/intelligence/correlation.ts` is pure and rule-based. Incident identity is
+  `(workspace_id, correlation_rule, correlation_key)`, so re-running the engine
+  updates the same incident rather than duplicating it.
+- Rules: repeated endpoint authentication failures (24h, ≥3 occurrences);
+  exposed SSH/RDP addressed by the same enrolled endpoint IP with authentication
+  failures; secret findings in a production project that explicitly owns domain
+  assets; ≥3 high/critical open findings on one asset in 7 days; ≥5
+  authentication events from one source IP against one asset in 24h.
+- Every incident stores its rule, key, plain-language reason and evidence.
+  `incident_finding.reason` explains each association; `incident_event` is the
+  timeline (created, signal changes, notes, status changes, auto-resolve).
+- Incidents auto-resolve when no open signal matches, with a system timeline
+  entry. User-set statuses are never overwritten while signals exist.
+- Correlation is re-evaluated by the web app on incident/overview reads. The
+  Python worker is unchanged: intelligence reads the same normalized findings and
+  events it already writes.
+
 ## Failures and freshness
 
 - Worker status is derived: online if `last_seen_at` is within 90 seconds
   (three missed 30-second heartbeats).
 - The UI distinguishes "not scanned" from "no findings" and never renders a
-  synthetic score. Findings, scores, incidents and reports stay explicitly
-  unavailable until their phase lands.
+  synthetic score. Reports and remediation tracking remain explicitly
+  unavailable until 3.3–3.5 land.

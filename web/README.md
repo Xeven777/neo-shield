@@ -106,6 +106,7 @@ Session-authenticated, workspace-scoped, JSON, `cache-control: no-store`:
 - `GET /api/v1/events` (endpoint event history, filterable and paginated)
 - `GET /api/v1/assets/:assetId` (asset detail, Wazuh agent and network inventory)
 - `GET /api/v1/findings`, `GET|PATCH /api/v1/findings/:findingId`
+- `GET /api/v1/incidents`, `GET|PATCH /api/v1/incidents/:incidentId` (correlation rules, timeline, status)
 
 Worker credential endpoints:
 
@@ -118,8 +119,10 @@ derived from the session and the active workspace, never from the payload.
 ## Scripts
 
 ```bash
-bun dev / build / start
-bun lint / typecheck / format
+bun dev
+bun run build
+bun start
+bun lint / typecheck / test / format
 bun db:generate / db:migrate / db:studio
 ```
 

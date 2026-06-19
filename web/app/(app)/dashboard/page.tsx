@@ -7,12 +7,16 @@ import {
   FolderSimpleIcon,
   PulseIcon,
   ShieldWarningIcon,
+  SirenIcon,
   StackIcon,
 } from "@phosphor-icons/react/dist/ssr"
 
 import { PageHeader } from "@/components/page-header"
 import { ProjectDialog } from "@/components/projects/project-dialog"
 import { WorkerPill } from "@/components/worker-pill"
+import { HealthScoreCard } from "@/components/intelligence/health-score-card"
+import { IncidentStatusBadge } from "@/components/incidents/badges"
+import { SeverityBadge } from "@/components/findings/badges"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -30,6 +34,8 @@ import {
 import { requireWorkspace } from "@/lib/auth/session"
 import { formatRelativeTime, pluralize, titleCase } from "@/lib/format"
 import { getWorkspaceOverview } from "@/lib/services/overview"
+import { getWorkspaceHealth } from "@/lib/services/scores"
+import { listActiveIncidents, refreshIncidents } from "@/lib/services/incidents"
 
 export const metadata: Metadata = { title: "Overview" }
 
@@ -55,6 +61,8 @@ const actionLabels: Record<string, string> = {
   "network.disabled": "Network range disabled",
   "scan.queued": "Scan queued",
   "finding.status_changed": "Finding status changed",
+  "incident.status_changed": "Incident status changed",
+  "incident.note_added": "Incident note added",
 }
 
 const assetLabels: Record<string, string> = {
@@ -67,7 +75,13 @@ const assetLabels: Record<string, string> = {
 
 export default async function DashboardPage() {
   const { workspace, session } = await requireWorkspace()
-  const overview = await getWorkspaceOverview(workspace.id)
+  const [overview, health] = await Promise.all([
+    getWorkspaceOverview(workspace.id),
+    getWorkspaceHealth(workspace.id),
+  ])
+
+  await refreshIncidents(workspace.id)
+  const activeIncidents = await listActiveIncidents(workspace.id, 3)
 
   const setupSteps = [
     {
@@ -109,23 +123,7 @@ export default async function DashboardPage() {
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card size="sm">
-          <CardHeader>
-            <CardDescription>Workspace health</CardDescription>
-            <div className="flex items-baseline gap-2">
-              <CardTitle className="font-mono text-3xl">—</CardTitle>
-              <Badge variant="outline" className="font-mono text-[10px]">
-                not scanned
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              Score starts after the first completed scan. It is computed from
-              open findings only.
-            </p>
-          </CardContent>
-        </Card>
+        <HealthScoreCard health={health} />
 
         <Card size="sm">
           <CardHeader>
@@ -196,7 +194,7 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>Freshness</CardTitle>
@@ -223,8 +221,8 @@ export default async function DashboardPage() {
             ))}
             <div className="mt-2 border-t border-border pt-3 text-xs text-muted-foreground">
               Repository, domain, endpoint and network collectors are active.
-              Wazuh events and Nmap inventory appear as soon as their first
-              sync completes.
+              Wazuh events and Nmap inventory appear as soon as their first sync
+              completes.
             </div>
           </CardContent>
         </Card>
@@ -293,6 +291,62 @@ export default async function DashboardPage() {
                 ))}
               </ul>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Potential incidents</CardTitle>
+            <CardDescription>
+              Deterministic correlation, newest first.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {activeIncidents.length === 0 ? (
+              <Empty className="border border-dashed border-border p-6">
+                <EmptyHeader>
+                  <EmptyTitle className="text-sm">
+                    No correlated incidents
+                  </EmptyTitle>
+                  <EmptyDescription className="text-xs">
+                    Rules group repeated authentication failures, exposed remote
+                    management, production secrets with domains and high-risk
+                    clusters.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <ul className="space-y-3">
+                {activeIncidents.map(({ incident, findingCount }) => (
+                  <li key={incident.id} className="flex items-start gap-2">
+                    <SirenIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/incidents/${incident.id}`}
+                        className="line-clamp-2 text-sm leading-snug underline-offset-4 hover:underline"
+                      >
+                        {incident.title}
+                      </Link>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <SeverityBadge severity={incident.severity} />
+                        <IncidentStatusBadge status={incident.status} />
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {findingCount} finding
+                          {findingCount === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Link
+              href="/incidents"
+              className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              All incidents
+              <ArrowUpRightIcon className="size-3" />
+            </Link>
           </CardContent>
         </Card>
       </div>

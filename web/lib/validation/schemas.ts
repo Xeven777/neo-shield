@@ -201,8 +201,95 @@ export const findingStatusUpdateSchema = z.object({
   note: z.string().trim().max(500).optional(),
 })
 
+export const findingNoteSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(1, "Write a note before saving.")
+    .max(2000, "Keep notes under 2000 characters."),
+})
+
+const optionalOwner = z.preprocess(
+  (value) => (value === "" || value === null ? null : value),
+  z.uuid("Select a workspace member.").nullable().optional()
+)
+
+export const ownerUpdateSchema = z.object({
+  ownerUserId: optionalOwner,
+})
+
+/* -------------------------------------------------------------------------- */
+/* Phase 3: remediation tracking                                              */
+/* -------------------------------------------------------------------------- */
+
+export const remediationStatuses = [
+  "planned",
+  "in_progress",
+  "fixed",
+  "verified",
+] as const
+
+export const createRemediationSchema = z.object({
+  findingId: z.uuid("Invalid finding id."),
+  recommendation: z
+    .string()
+    .trim()
+    .min(1, "Describe the remediation step.")
+    .max(1000, "Keep the recommendation under 1000 characters."),
+  ownerUserId: optionalOwner,
+})
+
+export const remediationStatusUpdateSchema = z.object({
+  remediationId: z.uuid("Invalid remediation id."),
+  status: z.enum(remediationStatuses),
+  note: z.string().trim().max(1000).optional(),
+})
+
+/* -------------------------------------------------------------------------- */
+/* Phase 3: incidents                                                         */
+/* -------------------------------------------------------------------------- */
+
+export const incidentStatuses = [
+  "new",
+  "investigating",
+  "contained",
+  "resolved",
+  "closed",
+] as const
+
+export const incidentFilterSchema = z.object({
+  status: z.enum(incidentStatuses).optional(),
+  severity: z.enum(findingSeverities).optional(),
+  projectId: z.uuid().optional(),
+  q: z.string().trim().max(120).optional(),
+})
+
+export const incidentStatusUpdateSchema = z.object({
+  status: z.enum(incidentStatuses),
+  note: z.string().trim().max(1000).optional(),
+})
+
+export const incidentNoteSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(1, "Write a note before saving.")
+    .max(1000, "Keep notes under 1000 characters."),
+})
+
 export type CreateProjectInput = z.infer<typeof createProjectSchema>
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>
 export type EventFilter = z.infer<typeof eventFilterSchema>
 export type FindingFilter = z.infer<typeof findingFilterSchema>
 export type FindingStatusUpdateInput = z.infer<typeof findingStatusUpdateSchema>
+export type FindingNoteInput = z.infer<typeof findingNoteSchema>
+export type OwnerUpdateInput = z.infer<typeof ownerUpdateSchema>
+export type CreateRemediationInput = z.infer<typeof createRemediationSchema>
+export type RemediationStatusUpdateInput = z.infer<
+  typeof remediationStatusUpdateSchema
+>
+export type IncidentFilter = z.infer<typeof incidentFilterSchema>
+export type IncidentStatusUpdateInput = z.infer<
+  typeof incidentStatusUpdateSchema
+>
+export type IncidentNoteInput = z.infer<typeof incidentNoteSchema>

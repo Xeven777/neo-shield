@@ -7,9 +7,12 @@ import {
   asset,
   finding,
   findingEvidence,
+  findingNote,
   findingStatusEvent,
   project,
   scanRun,
+  user,
+  workspaceMember,
   type FindingRow,
   type ScanRun,
   type FindingSeverity,
@@ -137,6 +140,8 @@ export type FindingDetail = FindingListItem & {
   evidence: typeof findingEvidence.$inferSelect | null
   scanRun: ScanRun | null
   events: Array<typeof findingStatusEvent.$inferSelect>
+  notes: Array<{ note: typeof findingNote.$inferSelect; actorName: string | null }>
+  ownerName: string | null
 }
 
 export async function getFinding(
@@ -152,39 +157,161 @@ export async function getFinding(
       assetType: asset.type,
       projectId: project.id,
       projectName: project.name,
+      ownerName: user.name,
     })
     .from(finding)
     .innerJoin(asset, eq(asset.id, finding.assetId))
     .innerJoin(project, eq(project.id, finding.projectId))
+    .leftJoin(user, eq(user.id, finding.ownerUserId))
     .where(and(eq(finding.workspaceId, workspaceId), eq(finding.id, findingId)))
     .limit(1)
 
   if (!row) return null
 
-  const [evidence] = await db
-    .select()
-    .from(findingEvidence)
-    .where(eq(findingEvidence.findingId, findingId))
-    .limit(1)
-
-  const events = await db
-    .select()
-    .from(findingStatusEvent)
-    .where(eq(findingStatusEvent.findingId, findingId))
-    .orderBy(desc(findingStatusEvent.createdAt))
-    .limit(20)
+  const [evidence, events, notes] = await Promise.all([
+    db
+      .select()
+      .from(findingEvidence)
+      .where(eq(findingEvidence.findingId, findingId))
+      .limit(1),
+    db
+      .select()
+      .from(findingStatusEvent)
+      .where(eq(findingStatusEvent.findingId, findingId))
+      .orderBy(desc(findingStatusEvent.createdAt))
+      .limit(20),
+    db
+      .select({ note: findingNote, actorName: user.name })
+      .from(findingNote)
+      .leftJoin(user, eq(user.id, findingNote.actorUserId))
+      .where(eq(findingNote.findingId, findingId))
+      .orderBy(desc(findingNote.createdAt))
+      .limit(50),
+  ])
 
   let run: ScanRun | null = null
-  if (evidence?.scanRunId) {
-    const [row] = await db
+  if (evidence[0]?.scanRunId) {
+    const [runRow] = await db
       .select()
       .from(scanRun)
-      .where(eq(scanRun.id, evidence.scanRunId))
+      .where(eq(scanRun.id, evidence[0].scanRunId))
       .limit(1)
-    run = row ?? null
+    run = runRow ?? null
   }
 
-  return { ...row, evidence: evidence ?? null, scanRun: run, events }
+  return {
+    ...row,
+    ownerName: row.ownerName ?? null,
+    evidence: evidence[0] ?? null,
+    scanRun: run,
+    events,
+    notes,
+  }
+}
+
+/** Resolve a nullable owner to a member of the same workspace. */
+async function verifyOwnerMembership(workspaceId: string, userId: string) {
+  const [row] = await getDb()
+    .select({ id: workspaceMember.id })
+    .from(workspaceMember)
+    .where(
+      and(
+        eq(workspaceMember.workspaceId, workspaceId),
+        eq(workspaceMember.userId, userId)
+      )
+    )
+    .limit(1)
+
+  return row !== undefined
+}
+
+export async function addFindingNote(input: {
+  workspaceId: string
+  findingId: string
+  actorUserId: string
+  note: string
+}): Promise<typeof findingNote.$inferSelect | null> {
+  const db = getDb()
+
+  const [existing] = await db
+    .select({ id: finding.id })
+    .from(finding)
+    .where(
+      and(
+        eq(finding.workspaceId, input.workspaceId),
+        eq(finding.id, input.findingId)
+      )
+    )
+    .limit(1)
+
+  if (!existing) return null
+
+  const [note] = await db
+    .insert(findingNote)
+    .values({
+      findingId: existing.id,
+      actorUserId: input.actorUserId,
+      body: input.note,
+    })
+    .returning()
+
+  await recordAudit({
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
+    action: "finding.note_added",
+    targetType: "finding",
+    targetId: existing.id,
+    metadata: { length: input.note.length },
+  })
+
+  return note
+}
+
+export async function setFindingOwner(input: {
+  workspaceId: string
+  findingId: string
+  actorUserId: string
+  actorRole: WorkspaceRole
+  ownerUserId: string | null
+}): Promise<FindingRow | null> {
+  if (!canManageWorkspace(input.actorRole)) {
+    throw new AuthorizationError(
+      "Only workspace admins can assign finding owners."
+    )
+  }
+
+  if (
+    input.ownerUserId &&
+    !(await verifyOwnerMembership(input.workspaceId, input.ownerUserId))
+  ) {
+    throw new AuthorizationError("The selected owner is not a member.")
+  }
+
+  const db = getDb()
+
+  const [updated] = await db
+    .update(finding)
+    .set({ ownerUserId: input.ownerUserId, updatedAt: new Date() })
+    .where(
+      and(
+        eq(finding.workspaceId, input.workspaceId),
+        eq(finding.id, input.findingId)
+      )
+    )
+    .returning()
+
+  if (!updated) return null
+
+  await recordAudit({
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
+    action: "finding.owner_changed",
+    targetType: "finding",
+    targetId: updated.id,
+    metadata: { ownerUserId: input.ownerUserId },
+  })
+
+  return updated
 }
 
 export async function updateFindingStatus(input: {

@@ -13,11 +13,11 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" })
 
 export const metadata: Metadata = {
   title: {
-    default: "NeoShield — Unified security intelligence",
+    default: "NeoShield, security findings in one place",
     template: "%s · NeoShield",
   },
   description:
-    "Repository, domain, endpoint and network security findings in one explainable dashboard.",
+    "Repository, domain, endpoint, network and AWS checks in one dashboard, with a score and incident history for every finding.",
   applicationName: "NeoShield",
 }
 

@@ -3,6 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeftIcon, StackIcon } from "@phosphor-icons/react/dist/ssr"
 
+import { HealthScoreCard } from "@/components/intelligence/health-score-card"
 import { DeleteProjectDialog } from "@/components/projects/delete-project-dialog"
 import { ProjectDialog } from "@/components/projects/project-dialog"
 import { ScanNowButton } from "@/components/scans/scan-now-button"
@@ -33,6 +34,7 @@ import {
 import { requireWorkspace, canManageWorkspace } from "@/lib/auth/session"
 import { formatDateTime, formatRelativeTime, titleCase } from "@/lib/format"
 import { getProject, listProjectAssets } from "@/lib/services/projects"
+import { getProjectHealth } from "@/lib/services/scores"
 import { listProjectScanJobs } from "@/lib/services/scans"
 
 export const metadata: Metadata = { title: "Project" }
@@ -48,9 +50,10 @@ export default async function ProjectDetailPage({
   const project = await getProject(workspace.id, projectId)
   if (!project) notFound()
 
-  const [assets, scanJobs] = await Promise.all([
+  const [assets, scanJobs, health] = await Promise.all([
     listProjectAssets(project.id),
     listProjectScanJobs(project.id),
+    getProjectHealth(workspace.id, project.id),
   ])
 
   const latestJobByAsset = new Map<string, (typeof scanJobs)[number]["job"]>()
@@ -190,42 +193,48 @@ export default async function ProjectDetailPage({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Project metadata</CardTitle>
-            <CardDescription>
-              Read-only identifiers and timestamps.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="gap-3 text-sm">
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Project ID</span>
-              <span className="truncate font-mono text-xs">{project.id}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Created</span>
-              <span className="font-mono text-xs">
-                {formatDateTime(project.createdAt)}
-              </span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Updated</span>
-              <span className="font-mono text-xs">
-                {formatDateTime(project.updatedAt)}
-              </span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Scan state</span>
-              <Badge variant="outline" className="font-mono text-[10px]">
-                not scanned
-              </Badge>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Health score</span>
-              <span className="font-mono text-xs text-muted-foreground">—</span>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          <HealthScoreCard health={health} title="Project health" />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Project metadata</CardTitle>
+              <CardDescription>
+                Read-only identifiers and timestamps.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="gap-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Project ID</span>
+                <span className="truncate font-mono text-xs">{project.id}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Created</span>
+                <span className="font-mono text-xs">
+                  {formatDateTime(project.createdAt)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Updated</span>
+                <span className="font-mono text-xs">
+                  {formatDateTime(project.updatedAt)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Scan state</span>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {health.scanned ? "scanned" : "not scanned"}
+                </Badge>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Health score</span>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {health.scanned ? `${health.score}/100` : "—"}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
   )

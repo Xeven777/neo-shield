@@ -189,11 +189,7 @@ export const asset = table(
  * added without a new table.
  */
 export type EndpointAgentStatus =
-  | "active"
-  | "disconnected"
-  | "pending"
-  | "never_connected"
-  | "unknown"
+  "active" | "disconnected" | "pending" | "never_connected" | "unknown"
 
 export const endpointAgent = table(
   "endpoint_agent",
@@ -480,7 +476,10 @@ export const networkHost = table(
     hostname: text(),
     macAddress: text(),
     vendor: text(),
-    status: text().$type<NetworkObservationStatus>().notNull().default("active"),
+    status: text()
+      .$type<NetworkObservationStatus>()
+      .notNull()
+      .default("active"),
     firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     lastScanRunId: uuid().references(() => scanRun.id, {
@@ -512,7 +511,10 @@ export const networkService = table(
     version: text(),
     extraInfo: text(),
     cpe: text(),
-    status: text().$type<NetworkObservationStatus>().notNull().default("active"),
+    status: text()
+      .$type<NetworkObservationStatus>()
+      .notNull()
+      .default("active"),
     firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     lastScanRunId: uuid().references(() => scanRun.id, {
@@ -594,6 +596,8 @@ export const finding = table(
     remediation: text(),
     references: jsonb().$type<string[]>().notNull().default([]),
     status: findingStatus().notNull().default("open"),
+    /** Optional assignee. Must be a member of the finding's workspace. */
+    ownerUserId: text().references(() => user.id, { onDelete: "set null" }),
     firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     resolvedAt: timestamp({ withTimezone: true }),
@@ -645,6 +649,21 @@ export const findingStatusEvent = table(
   (t) => [index("finding_status_event_finding_id_idx").on(t.findingId)]
 )
 
+/** Free-form investigation notes, separate from status-change history. */
+export const findingNote = table(
+  "finding_note",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    findingId: uuid()
+      .notNull()
+      .references(() => finding.id, { onDelete: "cascade" }),
+    actorUserId: text().references(() => user.id, { onDelete: "set null" }),
+    body: text().notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index("finding_note_finding_id_idx").on(t.findingId)]
+)
+
 /* -------------------------------------------------------------------------- */
 /* Security events (endpoint telemetry, not every alert is a finding)         */
 /* -------------------------------------------------------------------------- */
@@ -690,14 +709,309 @@ export const securityEvent = table(
       t.workspaceId,
       t.eventTime
     ),
-    index("security_event_asset_id_event_time_idx").on(
-      t.assetId,
-      t.eventTime
-    ),
+    index("security_event_asset_id_event_time_idx").on(t.assetId, t.eventTime),
     index("security_event_workspace_id_severity_idx").on(
       t.workspaceId,
       t.severity
     ),
+  ]
+)
+
+/* -------------------------------------------------------------------------- */
+/* Security intelligence (Phase 3)                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Score history. Workspace rows have a null projectId; project rows point at
+ * one project. Snapshots are written lazily by the web app when the score or
+ * open-finding count changes (and at most once per day otherwise).
+ */
+export const scoreScope = pgEnum("score_scope", ["workspace", "project"])
+
+export type ScoreBucket = {
+  count: number
+  points: number
+}
+
+export type ScoreBreakdown = {
+  bySeverity: Record<FindingSeverity, ScoreBucket>
+  byAssetType: Record<string, ScoreBucket>
+  byExposure: Record<string, ScoreBucket>
+}
+
+export const scoreSnapshot = table(
+  "score_snapshot",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: uuid().references(() => project.id, { onDelete: "cascade" }),
+    scope: scoreScope().notNull(),
+    score: integer().notNull(),
+    riskPoints: real().notNull(),
+    openFindingCount: integer().notNull().default(0),
+    algorithmVersion: text().notNull(),
+    breakdown: jsonb()
+      .$type<ScoreBreakdown>()
+      .notNull()
+      .default({
+        bySeverity: {
+          critical: { count: 0, points: 0 },
+          high: { count: 0, points: 0 },
+          medium: { count: 0, points: 0 },
+          low: { count: 0, points: 0 },
+          informational: { count: 0, points: 0 },
+        },
+        byAssetType: {},
+        byExposure: {},
+      }),
+    computedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index("score_snapshot_workspace_scope_idx").on(
+      t.workspaceId,
+      t.projectId,
+      t.computedAt
+    ),
+  ]
+)
+
+export const incidentStatus = pgEnum("incident_status", [
+  "new",
+  "investigating",
+  "contained",
+  "resolved",
+  "closed",
+])
+
+export const incidentEventType = pgEnum("incident_event_type", [
+  "created",
+  "signal_changed",
+  "status_changed",
+  "note",
+  "auto_resolved",
+  "reopened",
+])
+
+/**
+ * A correlated group of findings. `correlationRule` + `correlationKey` are a
+ * deterministic identity: re-running the engine updates the same incident
+ * instead of creating duplicates.
+ */
+export const incident = table(
+  "incident",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: uuid()
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    correlationRule: text().notNull(),
+    correlationKey: text().notNull(),
+    title: text().notNull(),
+    summary: text().notNull(),
+    /** Plain-language explanation of why the signals were grouped. */
+    reason: text().notNull(),
+    severity: findingSeverity().notNull(),
+    status: incidentStatus().notNull().default("new"),
+    /** Optional assignee. Must be a member of the incident's workspace. */
+    ownerUserId: text().references(() => user.id, { onDelete: "set null" }),
+    evidence: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    firstDetectedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastDetectedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp({ withTimezone: true }),
+    /**
+     * Set only when the correlation engine auto-resolved the incident. User
+     * resolutions/closures never set it, so returning signals can reopen an
+     * auto-resolved incident without overriding a human decision.
+     */
+    autoResolvedAt: timestamp({ withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("incident_workspace_rule_key_key").on(
+      t.workspaceId,
+      t.correlationRule,
+      t.correlationKey
+    ),
+    index("incident_workspace_status_idx").on(t.workspaceId, t.status),
+    index("incident_workspace_last_detected_idx").on(
+      t.workspaceId,
+      t.lastDetectedAt
+    ),
+    index("incident_project_id_idx").on(t.projectId),
+  ]
+)
+
+export const incidentFinding = table(
+  "incident_finding",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    incidentId: uuid()
+      .notNull()
+      .references(() => incident.id, { onDelete: "cascade" }),
+    findingId: uuid()
+      .notNull()
+      .references(() => finding.id, { onDelete: "cascade" }),
+    /** Why this finding is part of the incident. */
+    reason: text().notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    unique("incident_finding_incident_finding_key").on(
+      t.incidentId,
+      t.findingId
+    ),
+    index("incident_finding_finding_id_idx").on(t.findingId),
+  ]
+)
+
+export const incidentEvent = table(
+  "incident_event",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    incidentId: uuid()
+      .notNull()
+      .references(() => incident.id, { onDelete: "cascade" }),
+    type: incidentEventType().notNull(),
+    fromStatus: incidentStatus(),
+    toStatus: incidentStatus(),
+    actorUserId: text().references(() => user.id, { onDelete: "set null" }),
+    note: text(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [index("incident_event_incident_id_idx").on(t.incidentId)]
+)
+
+/**
+ * Individual security events that contributed to an incident. The correlation
+ * engine links them explicitly so the incident timeline can show each event
+ * rather than only an aggregate count in evidence.
+ */
+export const incidentSecurityEvent = table(
+  "incident_security_event",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    incidentId: uuid()
+      .notNull()
+      .references(() => incident.id, { onDelete: "cascade" }),
+    securityEventId: uuid()
+      .notNull()
+      .references(() => securityEvent.id, { onDelete: "cascade" }),
+    reason: text().notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    unique("incident_security_event_incident_event_key").on(
+      t.incidentId,
+      t.securityEventId
+    ),
+    index("incident_security_event_event_id_idx").on(t.securityEventId),
+  ]
+)
+
+/* -------------------------------------------------------------------------- */
+/* Remediation tracking (Phase 3)                                             */
+/* -------------------------------------------------------------------------- */
+
+export const remediationStatus = pgEnum("remediation_status", [
+  "planned",
+  "in_progress",
+  "fixed",
+  "verified",
+])
+
+/**
+ * Remediation work for one finding. Multiple rows are allowed so an attempt
+ * can be retried/rolled back without losing its history. `verifiedScanRunId`
+ * is written only by a later successful scan that no longer observes the
+ * finding; failed scans never verify.
+ */
+export const remediation = table(
+  "remediation",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    findingId: uuid()
+      .notNull()
+      .references(() => finding.id, { onDelete: "cascade" }),
+    recommendation: text().notNull(),
+    status: remediationStatus().notNull().default("planned"),
+    ownerUserId: text().references(() => user.id, { onDelete: "set null" }),
+    createdByUserId: text().references(() => user.id, {
+      onDelete: "set null",
+    }),
+    verifiedScanRunId: uuid().references(() => scanRun.id, {
+      onDelete: "set null",
+    }),
+    verifiedAt: timestamp({ withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("remediation_workspace_id_status_idx").on(t.workspaceId, t.status),
+    index("remediation_finding_id_idx").on(t.findingId),
+  ]
+)
+
+export const remediationEvent = table(
+  "remediation_event",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    remediationId: uuid()
+      .notNull()
+      .references(() => remediation.id, { onDelete: "cascade" }),
+    fromStatus: remediationStatus(),
+    toStatus: remediationStatus().notNull(),
+    actorUserId: text().references(() => user.id, { onDelete: "set null" }),
+    note: text(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index("remediation_event_remediation_id_idx").on(t.remediationId),
+  ]
+)
+
+/* -------------------------------------------------------------------------- */
+/* Optional AI explanations (Phase 3)                                         */
+/* -------------------------------------------------------------------------- */
+
+export const aiTargetType = pgEnum("ai_target_type", ["finding", "incident"])
+
+/**
+ * An AI-generated explanation. This table is evidence of what was sent (via
+ * `inputDigest`) and what came back; it never modifies finding or incident
+ * severity/status.
+ */
+export const aiExplanation = table(
+  "ai_explanation",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid()
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    targetType: aiTargetType().notNull(),
+    findingId: uuid().references(() => finding.id, { onDelete: "cascade" }),
+    incidentId: uuid().references(() => incident.id, { onDelete: "cascade" }),
+    provider: text().notNull(),
+    model: text().notNull(),
+    /** SHA-256 of the exact redacted context sent to the provider. */
+    inputDigest: text().notNull(),
+    output: text().notNull(),
+    createdByUserId: text().references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index("ai_explanation_workspace_id_idx").on(t.workspaceId),
+    index("ai_explanation_finding_id_idx").on(t.findingId),
+    index("ai_explanation_incident_id_idx").on(t.incidentId),
   ]
 )
 
@@ -723,6 +1037,8 @@ export const auditLog = table(
 export type Workspace = typeof workspace.$inferSelect
 export type WorkspaceMember = typeof workspaceMember.$inferSelect
 export type Project = typeof project.$inferSelect
+export type ProjectCriticality = (typeof projectCriticality.enumValues)[number]
+export type ProjectEnvironment = (typeof projectEnvironment.enumValues)[number]
 export type Asset = typeof asset.$inferSelect
 export type Worker = typeof worker.$inferSelect
 export type ScanJob = typeof scanJob.$inferSelect
@@ -741,3 +1057,16 @@ export type Integration = typeof integration.$inferSelect
 export type NetworkHost = typeof networkHost.$inferSelect
 export type NetworkService = typeof networkService.$inferSelect
 export type SecurityEvent = typeof securityEvent.$inferSelect
+export type ScoreSnapshot = typeof scoreSnapshot.$inferSelect
+export type Incident = typeof incident.$inferSelect
+export type IncidentFinding = typeof incidentFinding.$inferSelect
+export type IncidentEvent = typeof incidentEvent.$inferSelect
+export type IncidentStatus = (typeof incidentStatus.enumValues)[number]
+export type IncidentEventType = (typeof incidentEventType.enumValues)[number]
+export type Remediation = typeof remediation.$inferSelect
+export type RemediationStatus = (typeof remediationStatus.enumValues)[number]
+export type RemediationEvent = typeof remediationEvent.$inferSelect
+export type FindingNote = typeof findingNote.$inferSelect
+export type AiExplanation = typeof aiExplanation.$inferSelect
+export type AiTargetType = (typeof aiTargetType.enumValues)[number]
+export type IncidentSecurityEvent = typeof incidentSecurityEvent.$inferSelect

@@ -66,14 +66,29 @@ Set `NEOSHIELD_WAZUH_*` and `NEOSHIELD_NETWORK_*` in the worker environment
 CIDR, explicit authorization and a typed confirmation; only private RFC1918/
 CGNAT networks up to `/24` are accepted.
 
+### Security intelligence (Phase 3, in progress)
+
+Health scores and incident correlation are live; remediation tracking, AI
+explanations and reports are next (see `PHASE3_CHECKLIST.md`).
+
+- **Overview / project page** — deterministic health score with algorithm
+  version, risk points, severity breakdown and trend. It shows "not scanned"
+  until a completed scan exists.
+- **Incidents** — five deterministic correlation rules group related findings by
+  asset, address, project and time window. Every incident shows its rule,
+  reason, evidence, related findings and timeline. Status changes are audited;
+  any member can add investigation notes.
+- Correlation is re-evaluated when the incidents or overview page loads. No
+  worker or worker-grant change is required for this layer.
+
 ## Basic tests
 
 Run these after any change; the first two are the pre-push checks.
 
 ```bash
-# 1. Web: typecheck, lint, production build
+# 1. Web: typecheck, lint, unit tests, production build
 cd web
-bun typecheck && bun lint && bun build
+bun typecheck && bun lint && bun test && bun run build
 
 # 2. Python: unit tests (Wazuh normalization, Nmap scope/XML/findings) and lint
 cd neoshield-python

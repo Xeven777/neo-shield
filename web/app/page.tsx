@@ -21,45 +21,45 @@ const capabilities = [
     title: "Repository security",
     phase: "Phase 1",
     description:
-      "OSV, Gitleaks and Trivy results normalized from the lockfile to the dashboard. No repository code is executed.",
+      "OSV, Gitleaks and Trivy results appear in the dashboard as findings. NeoShield never executes your repository code.",
     icon: CodeIcon,
   },
   {
     title: "Domain checks",
     phase: "Phase 1",
     description:
-      "TLS expiry, DNS records, redirects and security headers, collected with SSRF-safe resolution.",
+      "TLS expiry, DNS records, redirects and security headers. Lookups resolve through an SSRF-safe path.",
     icon: GlobeHemisphereWestIcon,
   },
   {
     title: "Endpoint monitoring",
     phase: "Phase 2",
     description:
-      "Wazuh alerts for failed logins, file integrity changes and malware detections mapped to assets.",
+      "Wazuh alerts for failed logins, file integrity changes and malware detections, attached to the asset they came from.",
     icon: DesktopIcon,
   },
   {
     title: "Network visibility",
     phase: "Phase 2",
     description:
-      "Authorized Nmap discovery with explicit scope confirmation and change tracking between scans.",
+      "Nmap discovery runs only after you confirm the exact CIDR. Each scan records the hosts and services that changed.",
     icon: BrowserIcon,
   },
   {
     title: "Cloud posture",
     phase: "Phase 4",
     description:
-      "Read-only IAM, S3, security-group and CloudTrail checks. Credentials never leave the worker.",
+      "Read-only IAM, S3, security group and CloudTrail checks. Credentials stay in the Python worker.",
     icon: CloudIcon,
   },
 ] as const
 
 const pipeline = [
   { step: "01", title: "Collect", detail: "Scanners and integrations" },
-  { step: "02", title: "Normalize", detail: "One finding contract" },
-  { step: "03", title: "Score", detail: "Deterministic health" },
-  { step: "04", title: "Correlate", detail: "Rule-based incidents" },
-  { step: "05", title: "Remediate", detail: "Tracked verification" },
+  { step: "02", title: "Normalize", detail: "One finding format" },
+  { step: "03", title: "Score", detail: "Deterministic health score" },
+  { step: "04", title: "Correlate", detail: "Incidents from correlation rules" },
+  { step: "05", title: "Remediate", detail: "Fix recorded and verified" },
 ] as const
 
 export default async function LandingPage() {
@@ -110,7 +110,7 @@ export default async function LandingPage() {
           <div>
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-3 py-1 font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
               <span className="size-1.5 rounded-full bg-emerald-500" />
-              Unified security intelligence
+              Five sources, one finding format
             </div>
             <h1 className="font-heading text-4xl leading-[1.05] font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.4rem]">
               Know what is exposed.
@@ -118,9 +118,10 @@ export default async function LandingPage() {
               <span className="text-primary">Prove what is fixed.</span>
             </h1>
             <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground">
-              NeoShield turns repository, domain, endpoint and network signals
-              into one normalized finding model with explainable scores,
-              correlated incidents and a remediation trail your team can audit.
+              NeoShield collects repository, domain, endpoint, network and AWS
+              checks and stores the results in one finding format. Each finding
+              keeps the scanner output, a score you can trace back to its rules,
+              and a record of who fixed it and who verified the fix.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -138,16 +139,16 @@ export default async function LandingPage() {
                 nativeButton={false}
                 render={<Link href="/sign-in" />}
               >
-                Email code or Google
+                Sign in with email or Google
               </Button>
             </div>
 
             <ul className="mt-8 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
               {[
-                "Evidence before opinions",
+                "Every finding links to its scanner evidence",
                 "Read-only cloud access",
                 "No repository code executed",
-                "AI optional, never authoritative",
+                "AI explains findings but never sets severity",
               ].map((item) => (
                 <li key={item} className="flex items-center gap-2">
                   <CheckCircleIcon
@@ -187,7 +188,7 @@ export default async function LandingPage() {
                       </p>
                     </div>
                     <span className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase">
-                      p0–p3
+                      p0 to p3
                     </span>
                   </li>
                 ))}
@@ -204,11 +205,11 @@ export default async function LandingPage() {
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-heading text-xl font-semibold tracking-tight">
-                One platform, five signal sources
+                What each module collects
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Each module maps into the same finding, scoring and incident
-                engine.
+                Every module writes into the same findings, scoring and incident
+                tables.
               </p>
             </div>
             <span className="font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
@@ -244,7 +245,7 @@ export default async function LandingPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-6 py-6 font-mono text-[11px] text-muted-foreground">
-          <span>NeoShield — security intelligence platform</span>
+          <span>NeoShield, security intelligence platform</span>
           <span>Neon PostgreSQL · Next.js · Python worker</span>
         </div>
       </footer>
