@@ -27,6 +27,7 @@ from neoshield.worker.wazuh_normalize import (
 logger = logging.getLogger(__name__)
 
 STALE_NOTE = "Absent from two consecutive successful scans"
+REOPEN_NOTE = "Rediscovered by a later successful scan"
 
 
 class StoreError(RuntimeError):
@@ -300,6 +301,7 @@ class ScanStore:
                         successful_tools,
                         seen_keys,
                         stale_after,
+                        run_id=run_id,
                     )
 
                 await connection.execute(
@@ -452,46 +454,64 @@ class ScanStore:
     ) -> str:
         cursor = await connection.execute(
             """
-            INSERT INTO finding (
-                workspace_id, project_id, asset_id, source, source_tool,
-                source_rule_id, stable_key, title, description, category,
-                severity, confidence, cve_id, cvss_score, remediation,
-                "references", first_seen_at, last_seen_at, occurrence_count,
-                missed_scan_count, updated_at
+            WITH previous AS (
+                SELECT id, status
+                FROM finding
+                WHERE asset_id = %(asset_id)s AND stable_key = %(stable_key)s
+            ), upserted AS (
+                INSERT INTO finding (
+                    workspace_id, project_id, asset_id, source, source_tool,
+                    source_rule_id, stable_key, title, description, category,
+                    severity, confidence, cve_id, cvss_score, remediation,
+                    "references", first_seen_at, last_seen_at, occurrence_count,
+                    missed_scan_count, updated_at
+                )
+                VALUES (
+                    %(workspace_id)s, %(project_id)s, %(asset_id)s,
+                    %(source)s::finding_source, %(source_tool)s, %(rule_id)s,
+                    %(stable_key)s, %(title)s, %(description)s, %(category)s,
+                    %(severity)s::finding_severity,
+                    %(confidence)s::finding_confidence,
+                    %(cve_id)s, %(cvss)s, %(remediation)s, %(references)s,
+                    now(), now(), 1, 0, now()
+                )
+                ON CONFLICT (asset_id, stable_key) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    description = EXCLUDED.description,
+                    severity = EXCLUDED.severity,
+                    confidence = EXCLUDED.confidence,
+                    cve_id = EXCLUDED.cve_id,
+                    cvss_score = EXCLUDED.cvss_score,
+                    remediation = EXCLUDED.remediation,
+                    "references" = EXCLUDED."references",
+                    source_rule_id = EXCLUDED.source_rule_id,
+                    last_seen_at = now(),
+                    occurrence_count = finding.occurrence_count + CASE
+                        WHEN %(increment)s THEN 1 ELSE 0
+                    END,
+                    missed_scan_count = 0,
+                    status = CASE
+                        WHEN finding.status = 'resolved'
+                        THEN 'open'::finding_status
+                        ELSE finding.status
+                    END,
+                    resolved_at = CASE
+                        WHEN finding.status = 'resolved' THEN NULL
+                        ELSE finding.resolved_at
+                    END,
+                    updated_at = now()
+                RETURNING id
+            ), reopened AS (
+                INSERT INTO finding_status_event (
+                    finding_id, from_status, to_status, actor_user_id, note
+                )
+                SELECT upserted.id, previous.status,
+                       'open'::finding_status, NULL, %(reopen_note)s
+                FROM previous
+                JOIN upserted ON upserted.id = previous.id
+                WHERE previous.status = 'resolved'::finding_status
             )
-            VALUES (
-                %(workspace_id)s, %(project_id)s, %(asset_id)s,
-                %(source)s::finding_source, %(source_tool)s, %(rule_id)s,
-                %(stable_key)s, %(title)s, %(description)s, %(category)s,
-                %(severity)s::finding_severity, %(confidence)s::finding_confidence,
-                %(cve_id)s, %(cvss)s, %(remediation)s, %(references)s,
-                now(), now(), 1, 0, now()
-            )
-            ON CONFLICT (asset_id, stable_key) DO UPDATE SET
-                title = EXCLUDED.title,
-                description = EXCLUDED.description,
-                severity = EXCLUDED.severity,
-                confidence = EXCLUDED.confidence,
-                cve_id = EXCLUDED.cve_id,
-                cvss_score = EXCLUDED.cvss_score,
-                remediation = EXCLUDED.remediation,
-                "references" = EXCLUDED."references",
-                source_rule_id = EXCLUDED.source_rule_id,
-                last_seen_at = now(),
-                occurrence_count = finding.occurrence_count + CASE
-                    WHEN %(increment)s THEN 1 ELSE 0
-                END,
-                missed_scan_count = 0,
-                status = CASE
-                    WHEN finding.status = 'resolved' THEN 'open'::finding_status
-                    ELSE finding.status
-                END,
-                resolved_at = CASE
-                    WHEN finding.status = 'resolved' THEN NULL
-                    ELSE finding.resolved_at
-                END,
-                updated_at = now()
-            RETURNING id
+            SELECT id FROM upserted
             """,
             {
                 "workspace_id": workspace_id,
@@ -511,6 +531,7 @@ class ScanStore:
                 "remediation": finding.remediation,
                 "references": Jsonb(finding.references),
                 "increment": increment_occurrence,
+                "reopen_note": REOPEN_NOTE,
             },
         )
         row = await cursor.fetchone()
@@ -557,6 +578,7 @@ class ScanStore:
         stale_after: int,
         *,
         categories: list[str] | None = None,
+        run_id: str | None = None,
     ) -> None:
         await connection.execute(
             """
@@ -607,6 +629,53 @@ class ScanStore:
                 "asset_id": asset_id,
                 "note": STALE_NOTE,
                 "threshold": max(1, stale_after),
+            },
+        )
+
+        if run_id is None:
+            return
+
+        # A successful scan that no longer observes a finding verifies any
+        # remediation already marked fixed. Failed scans never call this path,
+        # and a verified remediation keeps the run that proved it.
+        await connection.execute(
+            """
+            WITH verified AS (
+                UPDATE remediation AS r
+                SET status = 'verified'::remediation_status,
+                    verified_scan_run_id = %(run_id)s,
+                    verified_at = now(),
+                    updated_at = now()
+                FROM finding AS f
+                WHERE r.finding_id = f.id
+                  AND r.status = 'fixed'::remediation_status
+                  AND r.verified_scan_run_id IS NULL
+                  AND r.updated_at <= (
+                      SELECT started_at FROM scan_run WHERE id = %(run_id)s
+                  )
+                  AND f.asset_id = %(asset_id)s
+                  AND f.source_tool = ANY(%(tools)s)
+                  AND NOT (f.stable_key = ANY(%(seen)s))
+                  AND (
+                      %(categories)s::text[] IS NULL
+                      OR f.category = ANY(%(categories)s::text[])
+                  )
+                RETURNING r.id
+            )
+            INSERT INTO remediation_event (
+                remediation_id, from_status, to_status, actor_user_id, note
+            )
+            SELECT id, 'fixed'::remediation_status,
+                   'verified'::remediation_status, NULL, %(note)s
+            FROM verified
+            """,
+            {
+                "run_id": run_id,
+                "asset_id": asset_id,
+                "tools": successful_tools,
+                "seen": seen_keys,
+                "categories": categories,
+                "note": f"Verified by successful scan run {run_id}",
             },
         )
 
@@ -1299,6 +1368,7 @@ class ScanStore:
                     seen_keys,
                     stale_after,
                     categories=categories,
+                    run_id=run_id,
                 )
 
                 new_hosts = sorted(observed_hosts - existing_hosts)

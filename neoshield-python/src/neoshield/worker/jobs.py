@@ -20,6 +20,14 @@ import httpx
 
 from neoshield.config import Settings
 from neoshield.db.store import AssetTarget, ClaimedJob, ScanStore, StoreError
+from neoshield.worker.aws_scan import (
+    AwsScanError,
+    AwsScopeError,
+    scan_aws,
+)
+from neoshield.worker.aws_scan import (
+    validate_scope as validate_aws_scope,
+)
 from neoshield.worker.domain import DomainBlockedError, DomainCheckError, check_domain
 from neoshield.worker.github_client import (
     GithubError,
@@ -114,6 +122,8 @@ class JobRunner:
             await self._execute_endpoint(job, target, worker_id)
         elif target.asset_type == "network":
             await self._execute_network(job, target, worker_id)
+        elif target.asset_type == "aws_account":
+            await self._execute_aws(job, target, worker_id)
         else:
             await self._fail(
                 job,
@@ -657,6 +667,161 @@ class JobRunner:
             len(outcome.hosts),
             len(outcome.findings),
             cidr,
+        )
+
+    async def _execute_aws(
+        self, job: ClaimedJob, target: AssetTarget, worker_id: str
+    ) -> None:
+        account_id = target.config.get("accountId")
+        regions = target.config.get("regions")
+        profile = target.config.get("profile")
+        authorization = target.config.get("authorization")
+
+        if not isinstance(account_id, str) or not account_id.strip():
+            await self._fail(
+                job, None, "AWS asset is missing its account id", retryable=False
+            )
+            return
+        if not isinstance(regions, list) or not all(
+            isinstance(region, str) for region in regions
+        ):
+            await self._fail(
+                job, None, "AWS asset is missing its region list", retryable=False
+            )
+            return
+        if profile is not None and not isinstance(profile, str):
+            await self._fail(
+                job, None, "AWS asset profile is invalid", retryable=False
+            )
+            return
+        if not isinstance(authorization, dict):
+            await self._fail(
+                job, None, "AWS asset has no recorded authorization", retryable=False
+            )
+            return
+
+        authorized_account = authorization.get("accountId")
+        authorized_regions = authorization.get("regions")
+        if (
+            not authorization.get("confirmedByUserId")
+            or not authorization.get("confirmedAt")
+            or authorized_account != account_id.strip()
+            or not isinstance(authorized_regions, list)
+        ):
+            await self._fail(
+                job,
+                None,
+                "AWS asset authorization record is incomplete",
+                retryable=False,
+            )
+            return
+
+        try:
+            normalized_account, normalized_regions = validate_aws_scope(
+                account_id, regions, self.settings
+            )
+        except AwsScopeError as error:
+            await self._fail(job, None, str(error), retryable=False)
+            return
+
+        if (
+            normalized_account != account_id.strip()
+            or sorted(authorized_regions) != normalized_regions
+        ):
+            await self._fail(
+                job,
+                None,
+                "Scan scope does not match the authorized AWS account and regions",
+                retryable=False,
+            )
+            return
+
+        await self.store.mark_running(
+            job.id, worker_id, self.settings.job_lease_seconds
+        )
+
+        lease_stop = asyncio.Event()
+        lease_task = asyncio.create_task(
+            self._renew_lease(job.id, worker_id, lease_stop)
+        )
+        outcome = None
+        error: Exception | None = None
+        try:
+            outcome = await asyncio.to_thread(
+                scan_aws,
+                account_id=normalized_account,
+                regions=normalized_regions,
+                profile=profile,
+                settings=self.settings,
+            )
+        except Exception as caught:  # noqa: BLE001 - classified below
+            error = caught
+        finally:
+            lease_stop.set()
+            await asyncio.gather(lease_task, return_exceptions=True)
+
+        if isinstance(error, AwsScopeError):
+            await self._fail(job, None, str(error), retryable=False)
+            return
+        if isinstance(error, AwsScanError):
+            retryable = (
+                "credentials are unavailable" not in str(error)
+                and "different account" not in str(error)
+                and "disabled" not in str(error)
+            )
+            await self._fail(job, None, str(error), retryable=retryable)
+            return
+        if error is not None:
+            logger.exception(
+                "aws scan job %s failed unexpectedly", job.id, exc_info=error
+            )
+            await self._fail(job, None, clip(error, 300), retryable=True)
+            return
+
+        if outcome is None:
+            await self._fail(job, None, "AWS scan returned no result", retryable=True)
+            return
+
+        run_id = await self.store.start_run(
+            job, target, outcome.snapshot, scanner="aws"
+        )
+
+        # CloudTrail events age out of the lookback window; do not treat their
+        # absence as proof that the historical finding was remediated.
+        successful_tools = [
+            str(tool["name"])
+            for tool in outcome.tools
+            if tool.get("status") == "ok" and tool.get("name") != "aws-cloudtrail"
+        ]
+        if not successful_tools:
+            await self._fail(
+                job,
+                run_id,
+                "All AWS checks failed; review the worker role permissions",
+                retryable=False,
+            )
+            return
+
+        try:
+            await self.store.complete_success(
+                job,
+                target,
+                run_id,
+                outcome.findings,
+                outcome.tools,
+                successful_tools,
+                stale_after=self.settings.stale_finding_absences,
+            )
+        except StoreError as caught:
+            await self._fail(job, run_id, str(caught), retryable=True)
+            return
+
+        self._record_outcome(True)
+        logger.info(
+            "aws scan job %s completed: %s finding(s) for account %s",
+            job.id,
+            len(outcome.findings),
+            normalized_account,
         )
 
     async def _renew_lease(

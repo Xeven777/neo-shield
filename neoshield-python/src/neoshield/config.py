@@ -115,6 +115,21 @@ class Settings(BaseSettings):
     # Kept false: public ranges are always refused. There is no UI override.
     network_allow_public: bool = False
 
+    # ------------------------------------------------------------------
+    # AWS read-only checks (Phase 4)
+    #
+    # Credentials are never accepted from the web app. Boto3 resolves them
+    # from the process environment, a shared credentials file, an instance
+    # role or the explicitly selected profile below.
+    # ------------------------------------------------------------------
+    aws_enabled: bool = True
+    aws_profile: str | None = None
+    aws_max_regions: int = 8
+    aws_request_timeout_seconds: float = 20.0
+    aws_max_items: int = 500
+    aws_cloudtrail_lookback_hours: int = 24
+    aws_cloudtrail_max_events: int = 100
+
     @property
     def wazuh_configured(self) -> bool:
         if not self.wazuh_enabled or not self.wazuh_indexer_url:

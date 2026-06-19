@@ -3,7 +3,7 @@
 FastAPI health API plus the background worker that claims scan jobs and runs
 Gitleaks, OSV-Scanner and Trivy for repositories, DNS/TLS/HTTP checks for
 domains, Wazuh alert normalization for endpoints and authorized Nmap discovery
-for network ranges. AWS checks are a later phase.
+for network ranges, and read-only AWS configuration checks.
 
 This is a **separate application** from the Next.js web app. It has its own
 dependencies (`uv`), image and release lifecycle. It never owns the database
@@ -68,6 +68,23 @@ the shared database with the restricted role.
 `deploy/lab/wazuh/` contains an automated, pinned `wazuh-docker` single-node
 lab with localhost-only ports, an agent enrollment script, an event generator
 (failed SSH logins + FIM change) and an exposure check. See its README.
+
+## Phase 4 scope — read-only AWS checks
+
+- **IAM:** users/roles whose attached or inline policies allow a wildcard action
+  on all resources. Reported as a least-privilege review item.
+- **S3:** missing public-access-block settings, public bucket policies and
+  public ACL grants.
+- **EC2 security groups:** ingress from `0.0.0.0/0` or `::/0`, with SSH/RDP and
+  all-traffic rules called out.
+- **CloudTrail:** selected high-signal management events from Event History
+  over the configured lookback window (default 24 hours).
+
+Credentials are resolved from Boto3's normal credential chain or
+`NEOSHIELD_AWS_PROFILE`. The web app never receives AWS keys. The worker calls
+`sts:GetCallerIdentity` and refuses an account whose id does not match the
+confirmed asset. No AWS resource is created, changed or deleted. The minimal
+IAM policy is in `deploy/aws/read-only-policy.json`.
 
 ### Phase 2 settings
 
@@ -135,6 +152,17 @@ Pinned scanners: Gitleaks 8.21.2, OSV-Scanner 1.9.2, Trivy 0.76.2. Downloads
 happen on first startup and are checksum-verified where the project publishes a
 checksum file. If a binary cannot be installed, `/health` lists only the others
 and scans fail with a clear error instead of silently skipping coverage.
+
+### Phase 4 settings
+
+| Variable | Purpose |
+| --- | --- |
+| `NEOSHIELD_AWS_ENABLED` | Master switch (default `true`); assets still require an explicit confirmation |
+| `NEOSHIELD_AWS_PROFILE` | Optional local AWS profile; otherwise the normal credential chain |
+| `NEOSHIELD_AWS_MAX_REGIONS` | Maximum regions per asset (default 8) |
+| `NEOSHIELD_AWS_MAX_ITEMS` | Per-service item limit to bound scan time |
+| `NEOSHIELD_AWS_CLOUDTRAIL_LOOKBACK_HOURS` | Event History lookback (default 24) |
+| `NEOSHIELD_AWS_CLOUDTRAIL_MAX_EVENTS` | Maximum high-signal events retained per scan |
 
 Domain checks need no extra binaries. Tuning: `NEOSHIELD_DOMAIN_TIMEOUT_SECONDS`
 (default 15), `NEOSHIELD_DOMAIN_MAX_REDIRECTS` (default 5) and

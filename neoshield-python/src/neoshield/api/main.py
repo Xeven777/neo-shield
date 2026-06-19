@@ -176,6 +176,11 @@ async def health() -> dict[str, object]:
             "scanners": installed_scanners(),
             "nmap": nmap_path(),
             "networkDiscovery": nmap_path() is not None,
+            "aws": {
+                "enabled": settings.aws_enabled,
+                "readOnly": True,
+                "maxRegions": settings.aws_max_regions,
+            },
             "wazuh": {
                 "enabled": settings.wazuh_enabled,
                 "configured": settings.wazuh_configured,
